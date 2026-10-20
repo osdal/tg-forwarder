@@ -1,0 +1,53 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+env/
+
+# Env / secrets
+.env
+*.session
+*.session-journal
+
+# IDE
+.vscode/
+.idea/
+
+# Docker
+*.log
+
+# OS
+Thumbs.db
+.DS_Store
+
+# Media (если что-то упадёт в локальную папку)
+media/
+
+# Секреты
+.env
+*.session
+*.session-journal
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+env/
+
+# Node.js
+node_modules/
+dist/
+.vite/
+
+# Docker / Логи
+*.log
+pids/
+
+# OS / IDE
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
