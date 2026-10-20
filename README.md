@@ -3,7 +3,11 @@
 Полноценная студия контента для Telegram: автоматический сбор постов из каналов-источников, буфер с ручной модерацией, шаблоны с медиа и inline-кнопками, авто-публикация, отложенный постинг, интеграция с нейросетью и веб-панель с метриками.
 
 ---
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+![Python 3.11+](https://img.shields.io/badge/python-3.11%2B-blue)
+![Docker](https://img.shields.io/badge/docker-compose-blue)
 
+[![CI](https://github.com/osdal/tg-forwarder/actions/workflows/ci.yml/badge.svg)](https://github.com/osdal67/tg-forwarder/actions/workflows/ci.yml)
 ## 📖 Содержание
 
 - [Возможности](#-возможности)
