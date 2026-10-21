@@ -21,7 +21,8 @@ from shared.db import SessionLocal
 from shared.models import Post, PostStatus, TargetChannel, Source, AppSettings
 from shared.storage import load_media_bytes, mark_media_published
 from shared.publisher import publish_post_to_channel
-from shared.ai_helper import translate_text, rewrite_text
+from shared.ai_helper import translate_text, rewrite_text, generate_text
+from shared.text_utils import remove_links
 from shared.minio_client import get_minio
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(name)s: %(message)s")
@@ -35,6 +36,7 @@ dp = Dispatcher(storage=MemoryStorage())
 class AdminStates(StatesGroup):
     waiting_for_edit_text = State()
     waiting_for_schedule_time = State()
+    waiting_for_ai_prompt = State()
 
 def build_post_keyboard(post_id: int) -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(
@@ -182,7 +184,9 @@ async def cb_delete(callback: CallbackQuery) -> None:
 def get_edit_ai_keyboard(post_id: int) -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="🇷🇺 Перевести", callback_data=f"ai_trans:{post_id}"),
-         InlineKeyboardButton(text="🔄 Рерайт", callback_data=f"ai_rewr:{post_id}")]
+         InlineKeyboardButton(text="🔄 Рерайт", callback_data=f"ai_rewr:{post_id}")],
+        [InlineKeyboardButton(text="🧹 Очистить ссылки", callback_data=f"ai_clear_links:{post_id}"),
+         InlineKeyboardButton(text="✨ Написать с ИИ", callback_data=f"ai_gen:{post_id}")]
     ])
 
 @dp.callback_query(F.data.startswith("edit:"))
@@ -228,6 +232,63 @@ async def cb_ai_rewrite(callback: CallbackQuery, state: FSMContext) -> None:
             await session.commit()
         await callback.message.reply(f"✅ <b>Рерайт готов:</b>\n\n{rewritten}", reply_markup=get_edit_ai_keyboard(post_id))
     except Exception as e: await callback.message.reply(f"❌ Ошибка ИИ: {e}")
+
+@dp.callback_query(F.data.startswith("ai_clear_links:"))
+async def cb_ai_clear_links(callback: CallbackQuery, state: FSMContext) -> None:
+    post_id = int(callback.data.split(":")[1])
+    await callback.answer("Очищаю ссылки...")
+    async with SessionLocal() as session:
+        post = (await session.execute(select(Post).where(Post.id == post_id))).scalar_one_or_none()
+        if not post: return
+        text = post.edited_text or post.original_text or ""
+    try:
+        cleaned = remove_links(text)
+        async with SessionLocal() as session:
+            post = (await session.execute(select(Post).where(Post.id == post_id))).scalar_one()
+            post.edited_text = cleaned
+            await session.commit()
+        await callback.message.reply(f"✅ <b>Ссылки удалены:</b>\n\n{cleaned}", reply_markup=get_edit_ai_keyboard(post_id))
+    except Exception as e: await callback.message.reply(f"❌ Ошибка: {e}")
+
+@dp.callback_query(F.data.startswith("ai_gen:"))
+async def cb_ai_generate(callback: CallbackQuery, state: FSMContext) -> None:
+    post_id = int(callback.data.split(":")[1])
+    await state.set_state(AdminStates.waiting_for_ai_prompt)
+    await state.update_data(post_id=post_id)
+    await callback.message.reply("✨ <b>Напиши задание для ИИ</b> (например: «Напиши пост про то, как я заработал первые $100 на крипте»).\n\nИли отправь /cancel для отмены.")
+    await callback.answer()
+
+@dp.message(AdminStates.waiting_for_ai_prompt)
+async def process_ai_prompt(message: Message, state: FSMContext) -> None:
+    data = await state.get_data()
+    post_id = data.get("post_id")
+    prompt = message.text.strip()
+    
+    if not prompt:
+        return await message.answer("❌ Пустое задание. Напиши, о чём должен быть пост.")
+        
+    await bot.send_chat_action(chat_id=message.from_user.id, action="typing")
+    
+    async with SessionLocal() as session:
+        post = (await session.execute(select(Post).where(Post.id == post_id))).scalar_one_or_none()
+        if not post: 
+            await message.answer("❌ Пост не найден.")
+            await state.clear()
+            return
+        base_text = post.edited_text or post.original_text or ""
+        
+    try:
+        generated = generate_text(prompt, base_text)
+        async with SessionLocal() as session:
+            post = (await session.execute(select(Post).where(Post.id == post_id))).scalar_one()
+            post.edited_text = generated
+            await session.commit()
+        
+        await message.answer(f"✅ <b>Сгенерирован текст:</b>\n\n{generated}", reply_markup=get_edit_ai_keyboard(post_id))
+    except Exception as e:
+        await message.answer(f"❌ Ошибка ИИ: {e}")
+        
+    await state.clear()
 
 @dp.message(AdminStates.waiting_for_edit_text)
 async def process_edit_text(message: Message, state: FSMContext) -> None:

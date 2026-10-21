@@ -25,7 +25,8 @@ from shared.db import SessionLocal
 from shared.models import Post, PostStatus, PostMedia, Template, PostTemplate, TemplateFolder, Source, SourceTemplate, MediaLibrary, AppSettings
 from shared.publisher import publish_post_to_channel
 from shared.minio_client import get_minio
-from shared.ai_helper import translate_text, rewrite_text
+from shared.ai_helper import translate_text, rewrite_text, generate_text
+from shared.text_utils import remove_links
 from shared.process_manager import start_process, stop_process, is_running, kill_all_python_by_module
 from scripts.refetch_media import refetch_post_media
 from scripts.clear_target_channel import clear_target_channel
@@ -98,6 +99,10 @@ class AITextRequest(BaseModel):
     text: str
     word_count: int | None = None
 
+class AIGenerateRequest(BaseModel):
+    prompt: str
+    base_text: str | None = None
+
 @app.post("/api/ai/translate")
 async def api_translate(data: AITextRequest, _=Depends(get_current_admin)):
     try: return {"result": translate_text(data.text)}
@@ -107,6 +112,19 @@ async def api_translate(data: AITextRequest, _=Depends(get_current_admin)):
 async def api_rewrite(data: AITextRequest, _=Depends(get_current_admin)):
     try: return {"result": rewrite_text(data.text, data.word_count)}
     except Exception as e: raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/api/ai/remove-links")
+async def api_remove_links(data: AITextRequest, _=Depends(get_current_admin)):
+    try: return {"result": remove_links(data.text)}
+    except Exception as e: raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/api/ai/generate")
+async def api_generate(data: AIGenerateRequest, _=Depends(get_current_admin)):
+    try: 
+        result = generate_text(data.prompt, data.base_text or "")
+        return {"result": result}
+    except Exception as e: 
+        raise HTTPException(status_code=500, detail=str(e))
 
 # --- АВТОРИЗАЦИЯ ---
 class TelegramAuthData(BaseModel):

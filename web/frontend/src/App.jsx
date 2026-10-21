@@ -26,6 +26,10 @@ function App() {
   const [selectedTemplate, setSelectedTemplate] = useState("")
   
   const [aiLoading, setAiLoading] = useState(false)
+  const [linkClearing, setLinkClearing] = useState(false)
+  const [aiPrompt, setAiPrompt] = useState("")
+  const [aiGenerating, setAiGenerating] = useState(false)
+  
   const [wordCount, setWordCount] = useState("")
   const [postButtons, setPostButtons] = useState([])
   
@@ -205,6 +209,7 @@ function App() {
         setEditingPost(newPost);
         setEditText("");
         setPostButtons([]);
+        setAiPrompt("");
         fetchData();
       } else {
         const err = await res.json();
@@ -237,6 +242,37 @@ function App() {
       const res = await fetchWithAuth('http://localhost:8000/api/ai/rewrite', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ text: editText, word_count: wordCount ? parseInt(wordCount) : null }) })
       if (res.ok) setEditText((await res.json()).result)
     } finally { setAiLoading(false) }
+  }
+
+  const handleClearLinks = async () => {
+    if (!editText) return; setLinkClearing(true)
+    try {
+      const res = await fetchWithAuth('http://localhost:8000/api/ai/remove-links', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ text: editText }) })
+      if (res.ok) setEditText((await res.json()).result)
+    } finally { setLinkClearing(false) }
+  }
+
+  const handleGenerateText = async () => {
+    if (!aiPrompt.trim()) return alert("Напиши задание для ИИ.");
+    setAiGenerating(true);
+    try {
+      const res = await fetchWithAuth('http://localhost:8000/api/ai/generate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ prompt: aiPrompt, base_text: editText })
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setEditText(data.result);
+      } else {
+        const err = await res.json();
+        alert(`Ошибка ИИ: ${err.detail}`);
+      }
+    } catch (err) {
+      alert("Ошибка сети");
+    } finally {
+      setAiGenerating(false);
+    }
   }
 
   const handleUploadMedia = async (e) => {
@@ -435,8 +471,8 @@ function App() {
   const handleToggleSource = async (id) => { await fetchWithAuth(`http://localhost:8000/api/sources/${id}/toggle`, { method: 'PATCH' }); fetchData() }
   const handleDeleteSource = async (id) => { if (window.confirm("Удалить источник?")) { await fetchWithAuth(`http://localhost:8000/api/sources/${id}`, { method: 'DELETE' }); fetchData() } }
 
-  const openEditor = (post) => { setEditingPost(post); setEditText(post.text || ""); setWordCount(""); setPostButtons(post.buttons_json || []) }
-  const closeEditor = () => { setEditingPost(null); setEditText(""); setPostButtons([]); setShowLibSelector(false) }
+  const openEditor = (post) => { setEditingPost(post); setEditText(post.text || ""); setWordCount(""); setPostButtons(post.buttons_json || []); setAiPrompt("") }
+  const closeEditor = () => { setEditingPost(null); setEditText(""); setPostButtons([]); setShowLibSelector(false); setAiPrompt("") }
   
   const getMediaUrl = (key) => `http://localhost:9000/media/${key}?v=${cacheBuster}`
   const getStatusColor = (status) => ({ new: 'bg-blue-100 text-blue-800', published: 'bg-green-100 text-green-800', scheduled: 'bg-yellow-100 text-yellow-800', deleted: 'bg-red-100 text-red-800' }[status] || 'bg-gray-100')
@@ -862,12 +898,28 @@ function App() {
 
               <div className="mb-4 bg-gray-100 p-3 rounded border border-gray-200">
                 <label className="block text-sm font-bold text-gray-700 mb-2">🤖 Помощник ИИ</label>
+                
+                <div className="flex gap-2 mb-2">
+                  <input 
+                    placeholder="Задание для ИИ (например: 'Напиши пост про ...')" 
+                    className="flex-grow p-2 border rounded text-sm"
+                    value={aiPrompt}
+                    onChange={e => setAiPrompt(e.target.value)}
+                  />
+                  <button onClick={handleGenerateText} disabled={aiGenerating} className="bg-pink-600 text-white px-3 py-1 rounded text-sm disabled:opacity-50 whitespace-nowrap">
+                    {aiGenerating ? '...' : '✨ Написать с ИИ'}
+                  </button>
+                </div>
+
                 <div className="flex flex-wrap gap-2 items-center">
                   <button onClick={handleTranslate} disabled={aiLoading} className="bg-indigo-500 text-white px-3 py-1.5 rounded text-sm disabled:opacity-50">🇷🇺 Перевести</button>
                   <div className="flex items-center gap-1 bg-white border rounded px-2 py-1">
                     <input type="number" placeholder="Слов" className="w-16 outline-none text-sm" value={wordCount} onChange={e => setWordCount(e.target.value)} />
                     <button onClick={handleRewrite} disabled={aiLoading} className="bg-indigo-500 text-white px-3 py-1.5 rounded text-sm disabled:opacity-50">🔄 Рерайт</button>
                   </div>
+                  <button onClick={handleClearLinks} disabled={linkClearing} className="bg-gray-600 text-white px-3 py-1.5 rounded text-sm disabled:opacity-50">
+                    {linkClearing ? '...' : '🧹 Очистить ссылки'}
+                  </button>
                   {aiLoading && <span className="text-sm text-indigo-600 animate-pulse ml-auto">Нейросеть думает...</span>}
                 </div>
               </div>

@@ -2,6 +2,7 @@ import os
 import sys
 import signal
 import subprocess
+import time
 from pathlib import Path
 
 PIDS_DIR = Path("pids")
@@ -11,11 +12,13 @@ def get_pid_file(name: str) -> Path:
     return PIDS_DIR / f"{name}.pid"
 
 def is_running(name: str) -> bool:
+    """Проверяет, жив ли процесс по PID."""
     pid_file = get_pid_file(name)
     if not pid_file.exists():
         return False
     try:
         pid = int(pid_file.read_text().strip())
+        # Проверка на Windows и Linux
         if sys.platform == "win32":
             import ctypes
             PROCESS_QUERY_LIMITED_INFORMATION = 0x1000
@@ -66,17 +69,30 @@ def kill_all_python_by_module(module_name: str) -> int:
     return killed
 
 def start_process(name: str, module: str) -> tuple[bool, str]:
+    """Запускает процесс, если он еще не запущен."""
     if is_running(name):
         return False, "Процесс уже запущен (PID файл)"
     
+    # Убиваем "забытые" процессы перед запуском
     existing = kill_all_python_by_module(module)
     if existing > 0:
-        import time
         time.sleep(1)
 
     cmd = [sys.executable, "-m", module]
+    
+    # Принудительно включаем UTF-8 для дочернего процесса, чтобы логи не ломались
+    env = os.environ.copy()
+    env["PYTHONIOENCODING"] = "utf-8"
+    
     log_file = open(f"{name}.log", "a", encoding="utf-8")
-    kwargs = {"stdout": log_file, "stderr": log_file, "cwd": os.getcwd()}
+    
+    kwargs = {
+        "stdout": log_file,
+        "stderr": log_file,
+        "cwd": os.getcwd(),
+        "env": env
+    }
+    
     if sys.platform == "win32":
         kwargs["creationflags"] = subprocess.CREATE_NEW_PROCESS_GROUP
     else:
@@ -90,6 +106,7 @@ def start_process(name: str, module: str) -> tuple[bool, str]:
         return False, f"Ошибка запуска: {str(e)}"
 
 def stop_process(name: str) -> tuple[bool, str]:
+    """Останавливает процесс по PID."""
     pid_file = get_pid_file(name)
     if not pid_file.exists():
         return False, "Процесс не запущен"
@@ -100,9 +117,11 @@ def stop_process(name: str) -> tuple[bool, str]:
             subprocess.run(["taskkill", "/F", "/T", "/PID", str(pid)], check=True, capture_output=True)
         else:
             os.kill(pid, signal.SIGTERM)
-        pid_file.unlink()
+        
+        pid_file.unlink() # Удаляем файл PID
         return True, "Процесс остановлен"
     except Exception as e:
+        # Если процесса уже нет, просто чистим файл
         if pid_file.exists():
             pid_file.unlink()
         return False, f"Ошибка остановки: {str(e)}"
