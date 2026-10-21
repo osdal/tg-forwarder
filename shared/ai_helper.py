@@ -1,5 +1,7 @@
-"""Модуль для работы с ИИ (Google Gemini)."""
+"""Модуль для работы с ИИ (Google Gemini + бесплатная генерация картинок)."""
 import base64
+import urllib.parse
+import httpx
 from google import genai
 from shared.config import get_settings
 
@@ -38,16 +40,66 @@ def rewrite_text(text: str, word_count: int | None = None) -> str:
     return response.text.strip()
 
 
-# --- НОВАЯ ФУНКЦИЯ: генерация изображения по промпту ---
-def generate_image(prompt: str) -> bytes:
-    """Генерирует изображение по текстовому промпту и возвращает байты PNG."""
+def generate_text(prompt: str, base_text: str = "") -> str:
+    """Генерирует текст по промпту. Если передан base_text — использует его как контекст."""
     client = get_gemini_client()
-    # Модель может отличаться в зависимости от версии google-genai.
-    # Актуальные варианты: "gemini-2.5-flash-image" или "imagen-3.0-generate-002".
-    response = client.models.generate_images(
-        model="gemini-2.5-flash-image",
-        prompt=prompt,
-        config={"number_of_images": 1},
-    )
-    # Извлекаем байты первого изображения
-    return response.generated_images[0].image.image_bytes
+    if base_text and base_text.strip():
+        full_prompt = (
+            f"На основе исходного текста и инструкции сгенерируй новый текст на русском языке. "
+            f"Сохрани смысл, ссылки и эмодзи, если они уместны.\n\n"
+            f"Исходный текст:\n{base_text}\n\n"
+            f"Инструкция: {prompt}\n\n"
+            f"Выведи только готовый текст без лишних комментариев."
+        )
+    else:
+        full_prompt = (
+            f"Сгенерируй текст на русском языке по следующему запросу. "
+            f"Оформи его как готовый пост для Telegram (абзацы, эмодзи по смыслу). "
+            f"Выведи только готовый текст без лишних комментариев:\n\n{prompt}"
+        )
+    response = client.models.generate_content(model='gemini-2.5-flash', contents=full_prompt)
+    return response.text.strip()
+
+
+# --- ГЕНЕРАЦИЯ ИЗОБРАЖЕНИЙ (POLLINATIONS) ---
+
+def generate_image(
+    prompt: str,
+    width: int = 1024,
+    height: int = 1024,
+    model: str = "flux",
+    seed: int | None = None,
+    nologo: bool = True,
+) -> bytes:
+    """Генерирует изображение через Pollinations.ai.
+
+    Параметры:
+      width, height — размер в пикселях.
+      model — "flux" (качество) или "turbo" (быстро).
+      seed — для воспроизводимости (если None — случайный).
+      nologo — убрать водяной знак (может не работать без токена).
+    """
+    encoded_prompt = urllib.parse.quote(prompt, safe='')
+    params = {
+        "width": width,
+        "height": height,
+        "model": model,
+        "nologo": "true" if nologo else "false",
+    }
+    if seed is not None:
+        params["seed"] = seed
+    query = urllib.parse.urlencode(params)
+    url = f"https://image.pollinations.ai/prompt/{encoded_prompt}?{query}"
+
+    with httpx.Client(timeout=90.0) as client:
+        resp = client.get(url)
+        resp.raise_for_status()
+        return resp.content
+
+
+def list_image_models() -> list[str]:
+    """Возвращает список доступных моделей Pollinations."""
+    with httpx.Client(timeout=30.0) as client:
+        resp = client.get("https://image.pollinations.ai/models")
+        resp.raise_for_status()
+        return resp.json()

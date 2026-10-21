@@ -25,7 +25,7 @@ from shared.db import SessionLocal
 from shared.models import Post, PostStatus, PostMedia, Template, PostTemplate, TemplateFolder, Source, SourceTemplate, MediaLibrary, AppSettings
 from shared.publisher import publish_post_to_channel
 from shared.minio_client import get_minio
-from shared.ai_helper import translate_text, rewrite_text, generate_text
+from shared.ai_helper import translate_text, rewrite_text, generate_text, generate_image, list_image_models
 from shared.text_utils import remove_links
 from shared.process_manager import start_process, stop_process, is_running, kill_all_python_by_module
 from scripts.refetch_media import refetch_post_media
@@ -103,6 +103,15 @@ class AIGenerateRequest(BaseModel):
     prompt: str
     base_text: str | None = None
 
+class AIImageRequest(BaseModel):
+    prompt: str
+    post_id: int | None = None
+    width: int = 1024
+    height: int = 1024
+    model: str = "flux"
+    seed: int | None = None
+    nologo: bool = True
+
 @app.post("/api/ai/translate")
 async def api_translate(data: AITextRequest, _=Depends(get_current_admin)):
     try: return {"result": translate_text(data.text)}
@@ -125,6 +134,46 @@ async def api_generate(data: AIGenerateRequest, _=Depends(get_current_admin)):
         return {"result": result}
     except Exception as e: 
         raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/api/ai/image-models")
+async def api_image_models(_=Depends(get_current_admin)):
+    try:
+        return {"models": list_image_models()}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/api/ai/generate-image")
+async def api_generate_image(data: AIImageRequest, _=Depends(get_current_admin)):
+    """Генерирует картинку по промпту. Если post_id передан — прикрепляет к посту,
+    иначе сохраняет в медиа-библиотеку. Возвращает media_id созданной записи."""
+    try:
+        image_bytes = generate_image(
+            data.prompt,
+            width=data.width,
+            height=data.height,
+            model=data.model,
+            seed=data.seed,
+            nologo=data.nologo,
+        )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Ошибка генерации: {str(e)}")
+
+    if not data.post_id:
+        key = f"library/ai_{uuid.uuid4().hex[:8]}.jpg"
+        get_minio().upload_bytes(key, image_bytes, content_type="image/jpeg", tags={"keep": "true"})
+        async with SessionLocal() as session:
+            m = MediaLibrary(minio_key=key, media_type="photo", original_name="ai_generated")
+            session.add(m); await session.commit()
+            return {"status": "ok", "media_id": m.id, "key": key}
+
+    async with SessionLocal() as session:
+        post = (await session.execute(select(Post).where(Post.id == data.post_id).options(selectinload(Post.media)))).scalar_one_or_none()
+        if not post: raise HTTPException(status_code=404, detail="Пост не найден")
+        minio_key = f"user/{data.post_id}_ai_{uuid.uuid4().hex[:6]}.jpg"
+        get_minio().upload_bytes(minio_key, image_bytes, content_type="image/jpeg", tags={"keep": "true"})
+        pm = PostMedia(post_id=post.id, minio_key=minio_key, media_type="photo", order=len(post.media), is_user_added=True)
+        session.add(pm); await session.commit()
+        return {"status": "ok", "media_id": pm.id, "minio_key": minio_key}
 
 # --- АВТОРИЗАЦИЯ ---
 class TelegramAuthData(BaseModel):

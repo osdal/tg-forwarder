@@ -30,6 +30,17 @@ function App() {
   const [aiPrompt, setAiPrompt] = useState("")
   const [aiGenerating, setAiGenerating] = useState(false)
   
+  const [imagePrompt, setImagePrompt] = useState("")
+  const [imageGenerating, setImageGenerating] = useState(false)
+  const [imageWidth, setImageWidth] = useState(1080)
+  const [imageHeight, setImageHeight] = useState(1080)
+  const [imageModel, setImageModel] = useState("flux")
+  const [imageSeed, setImageSeed] = useState("")
+  const [imageModels, setImageModels] = useState(["flux", "turbo"])
+  const [lastGeneratedMediaId, setLastGeneratedMediaId] = useState(null)
+  const [libImageGenerating, setLibImageGenerating] = useState(false)
+  const [libImagePrompt, setLibImagePrompt] = useState("")
+  
   const [wordCount, setWordCount] = useState("")
   const [postButtons, setPostButtons] = useState([])
   
@@ -101,6 +112,15 @@ function App() {
       return () => clearInterval(interval);
     } 
   }, [token])
+
+  useEffect(() => {
+    if (token) {
+      fetchWithAuth('http://localhost:8000/api/ai/image-models')
+        .then(r => r.json())
+        .then(d => { if (d.models?.length) setImageModels(d.models); })
+        .catch(() => {});
+    }
+  }, [token]);
 
   useEffect(() => {
     window.onTelegramAuth = async (user) => {
@@ -210,6 +230,8 @@ function App() {
         setEditText("");
         setPostButtons([]);
         setAiPrompt("");
+        setImagePrompt("");
+        setLastGeneratedMediaId(null);
         fetchData();
       } else {
         const err = await res.json();
@@ -272,6 +294,79 @@ function App() {
       alert("Ошибка сети");
     } finally {
       setAiGenerating(false);
+    }
+  }
+
+  const handleGenerateImage = async (overridePrompt = null, replaceMediaId = null) => {
+    const promptToUse = overridePrompt ?? imagePrompt;
+    if (!promptToUse.trim()) return alert("Введи промпт для генерации картинки.");
+    if (!editingPost?.id) return alert("Сначала открой пост.");
+    setImageGenerating(true);
+    try {
+      if (replaceMediaId) {
+        try { await fetchWithAuth(`http://localhost:8000/api/media/${replaceMediaId}`, { method: 'DELETE' }); }
+        catch (e) { console.warn("Не удалось удалить старое медиа:", e); }
+      }
+      const body = {
+        prompt: promptToUse,
+        post_id: editingPost.id,
+        width: parseInt(imageWidth),
+        height: parseInt(imageHeight),
+        model: imageModel,
+        seed: imageSeed ? parseInt(imageSeed) : null,
+      };
+      const res = await fetchWithAuth('http://localhost:8000/api/ai/generate-image', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body)
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setCacheBuster(Date.now());
+        setLastGeneratedMediaId(data.media_id || null);
+        const updated = await fetchWithAuth(`http://localhost:8000/api/posts/${editingPost.id}`).then(r => r.json());
+        setEditingPost(updated);
+        if (!overridePrompt) setImagePrompt("");
+        fetchData();
+      } else {
+        const err = await res.json();
+        alert(`Ошибка генерации: ${err.detail}`);
+      }
+    } catch (err) {
+      alert("Ошибка сети");
+    } finally {
+      setImageGenerating(false);
+    }
+  }
+
+  const handleGenerateLibraryImage = async () => {
+    if (!libImagePrompt.trim()) return alert("Введи промпт для картинки.");
+    setLibImageGenerating(true);
+    try {
+      const res = await fetchWithAuth('http://localhost:8000/api/ai/generate-image', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          prompt: libImagePrompt,
+          width: parseInt(imageWidth),
+          height: parseInt(imageHeight),
+          model: imageModel,
+          seed: imageSeed ? parseInt(imageSeed) : null,
+        })
+      });
+      if (res.ok) {
+        setCacheBuster(Date.now());
+        setLibImagePrompt("");
+        alert("✅ Картинка сохранена в медиа-библиотеку!");
+        fetchData();
+      } else {
+        const err = await res.json();
+        alert(`Ошибка генерации: ${err.detail}`);
+      }
+    } catch (err) {
+      alert("Ошибка сети");
+    } finally {
+      setLibImageGenerating(false);
     }
   }
 
@@ -471,8 +566,8 @@ function App() {
   const handleToggleSource = async (id) => { await fetchWithAuth(`http://localhost:8000/api/sources/${id}/toggle`, { method: 'PATCH' }); fetchData() }
   const handleDeleteSource = async (id) => { if (window.confirm("Удалить источник?")) { await fetchWithAuth(`http://localhost:8000/api/sources/${id}`, { method: 'DELETE' }); fetchData() } }
 
-  const openEditor = (post) => { setEditingPost(post); setEditText(post.text || ""); setWordCount(""); setPostButtons(post.buttons_json || []); setAiPrompt("") }
-  const closeEditor = () => { setEditingPost(null); setEditText(""); setPostButtons([]); setShowLibSelector(false); setAiPrompt("") }
+  const openEditor = (post) => { setEditingPost(post); setEditText(post.text || ""); setWordCount(""); setPostButtons(post.buttons_json || []); setAiPrompt(""); setImagePrompt(""); setLastGeneratedMediaId(null) }
+  const closeEditor = () => { setEditingPost(null); setEditText(""); setPostButtons([]); setShowLibSelector(false); setAiPrompt(""); setImagePrompt(""); setLastGeneratedMediaId(null) }
   
   const getMediaUrl = (key) => `http://localhost:9000/media/${key}?v=${cacheBuster}`
   const getStatusColor = (status) => ({ new: 'bg-blue-100 text-blue-800', published: 'bg-green-100 text-green-800', scheduled: 'bg-yellow-100 text-yellow-800', deleted: 'bg-red-100 text-red-800' }[status] || 'bg-gray-100')
@@ -622,6 +717,47 @@ function App() {
               <button className="bg-blue-600 text-white px-4 py-2 rounded shadow text-sm font-bold">{libUploading ? 'Загрузка...' : '+ Загрузить файл'}</button>
             </div>
           </div>
+
+          <div className="mb-6 bg-emerald-50 p-4 rounded-lg border border-emerald-200">
+            <h3 className="text-sm font-bold text-emerald-800 mb-2">🎨 Сгенерировать картинку в библиотеку</h3>
+            <div className="flex flex-wrap gap-2 mb-2">
+              <select value={imageModel} onChange={e => setImageModel(e.target.value)} className="border rounded p-1 text-sm">
+                {imageModels.map(m => <option key={m} value={m}>{m}</option>)}
+              </select>
+              <select
+                value={`${imageWidth}x${imageHeight}`}
+                onChange={e => {
+                  const [w, h] = e.target.value.split('x').map(Number);
+                  setImageWidth(w); setImageHeight(h);
+                }}
+                className="border rounded p-1 text-sm"
+              >
+                <option value="1080x1080">Квадрат 1080×1080</option>
+                <option value="1080x1350">Портрет 1080×1350</option>
+                <option value="1920x1080">Альбом 1920×1080</option>
+                <option value="1280x720">Альбом (лёгкий) 1280×720</option>
+                <option value="1280x1280">Квадрат (лёгкий) 1280×1280</option>
+              </select>
+            </div>
+            <div className="flex gap-2">
+              <input
+                placeholder="Промпт для картинки..."
+                className="flex-grow p-2 border rounded text-sm"
+                value={libImagePrompt}
+                onChange={e => setLibImagePrompt(e.target.value)}
+                onKeyDown={e => { if (e.key === 'Enter' && !libImageGenerating) { e.preventDefault(); handleGenerateLibraryImage(); } }}
+                disabled={libImageGenerating}
+              />
+              <button
+                onClick={handleGenerateLibraryImage}
+                disabled={libImageGenerating}
+                className="bg-emerald-600 text-white px-4 py-2 rounded text-sm disabled:opacity-50 whitespace-nowrap"
+              >
+                {libImageGenerating ? 'Генерация...' : '🎨 Сгенерировать'}
+              </button>
+            </div>
+          </div>
+
           <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-4">
             {mediaLib.map(m => (
               <div key={m.id} className="bg-white rounded shadow overflow-hidden group relative h-32">
@@ -922,6 +1058,71 @@ function App() {
                   </button>
                   {aiLoading && <span className="text-sm text-indigo-600 animate-pulse ml-auto">Нейросеть думает...</span>}
                 </div>
+              </div>
+
+              <div className="mb-4 bg-emerald-50 p-3 rounded border border-emerald-200">
+                <label className="block text-sm font-bold text-emerald-800 mb-2">🎨 Генерация картинки</label>
+                <div className="flex flex-wrap gap-2 mb-2">
+                  <select value={imageModel} onChange={e => setImageModel(e.target.value)} className="border rounded p-1 text-sm">
+                    {imageModels.map(m => <option key={m} value={m}>{m}</option>)}
+                  </select>
+                  <select
+                    value={`${imageWidth}x${imageHeight}`}
+                    onChange={e => {
+                      const [w, h] = e.target.value.split('x').map(Number);
+                      setImageWidth(w); setImageHeight(h);
+                    }}
+                    className="border rounded p-1 text-sm"
+                  >
+                    <option value="1080x1080">Квадрат 1080×1080</option>
+                    <option value="1080x1350">Портрет 1080×1350</option>
+                    <option value="1920x1080">Альбом 1920×1080</option>
+                    <option value="1280x720">Альбом (лёгкий) 1280×720</option>
+                    <option value="1280x1280">Квадрат (лёгкий) 1280×1280</option>
+                  </select>
+                  <input
+                    type="number"
+                    placeholder="Seed (необязательно)"
+                    className="border rounded p-1 text-sm w-28"
+                    value={imageSeed}
+                    onChange={e => setImageSeed(e.target.value)}
+                  />
+                </div>
+                <div className="flex gap-2">
+                  <input
+                    placeholder="Промпт для картинки..."
+                    className="flex-grow p-2 border rounded text-sm"
+                    value={imagePrompt}
+                    onChange={e => setImagePrompt(e.target.value)}
+                    onKeyDown={e => { if (e.key === 'Enter' && !imageGenerating) { e.preventDefault(); handleGenerateImage(); } }}
+                    disabled={imageGenerating}
+                  />
+                  <button
+                    onClick={() => handleGenerateImage()}
+                    disabled={imageGenerating}
+                    className="bg-emerald-600 text-white px-3 py-1 rounded text-sm disabled:opacity-50 whitespace-nowrap"
+                  >
+                    {imageGenerating ? 'Генерация...' : '🎨 Сгенерировать'}
+                  </button>
+                </div>
+
+                {lastGeneratedMediaId && editingPost.media?.find(m => m.id === lastGeneratedMediaId) && (
+                  <div className="mt-2 flex items-center gap-2 bg-white p-2 rounded border">
+                    <img
+                      src={getMediaUrl(editingPost.media.find(m => m.id === lastGeneratedMediaId).key)}
+                      className="w-16 h-16 object-cover rounded"
+                    />
+                    <span className="text-xs text-gray-600 flex-grow">Сгенерировано</span>
+                    <button
+                      onClick={() => handleGenerateImage(imagePrompt, lastGeneratedMediaId)}
+                      disabled={imageGenerating}
+                      className="text-xs bg-amber-500 text-white px-2 py-1 rounded disabled:opacity-50"
+                    >
+                      🔄 Заменить
+                    </button>
+                  </div>
+                )}
+                {imageGenerating && <p className="text-xs text-emerald-700 mt-2 animate-pulse">Генерация занимает 5–30 секунд...</p>}
               </div>
 
               <div className="mb-4 bg-blue-50 p-3 rounded border border-blue-100">
