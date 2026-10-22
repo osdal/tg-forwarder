@@ -27,7 +27,6 @@ from shared.publisher import publish_post_to_channel
 from shared.minio_client import get_minio
 from shared.ai_helper import translate_text, rewrite_text, generate_text, generate_image, list_image_models
 from shared.text_utils import remove_links
-from shared.process_manager import start_process, stop_process, is_running, kill_all_python_by_module
 from scripts.refetch_media import refetch_post_media
 from scripts.clear_target_channel import clear_target_channel
 
@@ -36,7 +35,7 @@ app = FastAPI(title="TG Forwarder Web API")
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173", "http://127.0.0.1:5173", "http://localhost:5174", "http://127.0.0.1:5174"],
+    allow_origins=["*"],
     allow_credentials=True, allow_methods=["*"], allow_headers=["*"],
 )
 
@@ -53,34 +52,6 @@ def get_current_admin(credentials: HTTPAuthorizationCredentials = Depends(securi
         if payload.get("sub") != str(settings.admin_telegram_id): raise HTTPException(status_code=403, detail="Forbidden")
         return payload
     except jwt.PyJWTError: raise HTTPException(status_code=401, detail="Invalid token")
-
-# --- УПРАВЛЕНИЕ ПРОЦЕССАМИ ---
-class ProcessAction(BaseModel):
-    name: str
-
-@app.get("/api/processes/status")
-async def get_processes_status(_=Depends(get_current_admin)):
-    return {"bot": is_running("bot"), "collector": is_running("collector")}
-
-@app.post("/api/processes/start")
-async def start_service(data: ProcessAction, _=Depends(get_current_admin)):
-    if data.name == "bot": success, msg = start_process("bot", "bot.main")
-    elif data.name == "collector": success, msg = start_process("collector", "collector.main")
-    else: raise HTTPException(status_code=400, detail="Неизвестный процесс")
-    if success: return {"status": "ok", "message": msg}
-    raise HTTPException(status_code=400, detail=msg)
-
-@app.post("/api/processes/stop")
-async def stop_service(data: ProcessAction, _=Depends(get_current_admin)):
-    success, msg = stop_process(data.name)
-    if success: return {"status": "ok", "message": msg}
-    raise HTTPException(status_code=400, detail=msg)
-
-@app.post("/api/processes/force-kill-all")
-async def force_kill_all(_=Depends(get_current_admin)):
-    bot_count = kill_all_python_by_module("bot.main")
-    collector_count = kill_all_python_by_module("collector.main")
-    return {"status": "ok", "message": f"Убито {bot_count} bot-процессов и {collector_count} collector-процессов"}
 
 # --- СТАТУС HEARTBEAT ---
 @app.get("/api/status")
@@ -144,8 +115,6 @@ async def api_image_models(_=Depends(get_current_admin)):
 
 @app.post("/api/ai/generate-image")
 async def api_generate_image(data: AIImageRequest, _=Depends(get_current_admin)):
-    """Генерирует картинку по промпту. Если post_id передан — прикрепляет к посту,
-    иначе сохраняет в медиа-библиотеку. Возвращает media_id созданной записи."""
     try:
         image_bytes = generate_image(
             data.prompt,

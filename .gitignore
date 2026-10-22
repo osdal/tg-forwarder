@@ -51,3 +51,4 @@ pids/
 Thumbs.db
 .vscode/
 .idea/
+.env.bak

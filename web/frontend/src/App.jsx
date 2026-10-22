@@ -15,7 +15,6 @@ function App() {
   const [loading, setLoading] = useState(true)
   
   const [status, setStatus] = useState({ bot_online: false, collector_online: false })
-  const [procStatus, setProcStatus] = useState({ bot: false, collector: false })
   
   const [queueSourceFilter, setQueueSourceFilter] = useState('all')
 
@@ -77,13 +76,13 @@ function App() {
     if (!token) return
     try {
       const [postsRes, trashRes, libRes, tplRes, foldRes, metRes, srcRes] = await Promise.all([
-        fetchWithAuth('http://localhost:8000/api/posts?trash=false'),
-        fetchWithAuth('http://localhost:8000/api/posts?trash=true'),
-        fetchWithAuth('http://localhost:8000/api/media-library'),
-        fetchWithAuth('http://localhost:8000/api/templates'),
-        fetchWithAuth('http://localhost:8000/api/template-folders'),
-        fetchWithAuth('http://localhost:8000/api/metrics'),
-        fetchWithAuth('http://localhost:8000/api/sources')
+        fetchWithAuth('/api/posts?trash=false'),
+        fetchWithAuth('/api/posts?trash=true'),
+        fetchWithAuth('/api/media-library'),
+        fetchWithAuth('/api/templates'),
+        fetchWithAuth('/api/template-folders'),
+        fetchWithAuth('/api/metrics'),
+        fetchWithAuth('/api/sources')
       ])
       setPosts(await postsRes.json()); setTrashPosts(await trashRes.json());
       setMediaLib(await libRes.json()); setTemplates(await tplRes.json()); 
@@ -94,10 +93,8 @@ function App() {
   const fetchStatus = async () => {
     if (!token) return
     try {
-      const res = await fetchWithAuth('http://localhost:8000/api/status')
+      const res = await fetchWithAuth('/api/status')
       setStatus(await res.json())
-      const procRes = await fetchWithAuth('http://localhost:8000/api/processes/status')
-      setProcStatus(await procRes.json())
     } catch (err) {}
   }
 
@@ -115,7 +112,7 @@ function App() {
 
   useEffect(() => {
     if (token) {
-      fetchWithAuth('http://localhost:8000/api/ai/image-models')
+      fetchWithAuth('/api/ai/image-models')
         .then(r => r.json())
         .then(d => { if (d.models?.length) setImageModels(d.models); })
         .catch(() => {});
@@ -125,7 +122,7 @@ function App() {
   useEffect(() => {
     window.onTelegramAuth = async (user) => {
       try {
-        const res = await fetch('http://localhost:8000/api/auth/telegram', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(user) })
+        const res = await fetch('/api/auth/telegram', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(user) })
         if (res.ok) { const data = await res.json(); localStorage.setItem('token', data.token); setToken(data.token) }
       } catch (e) { alert("Ошибка сети") }
     }
@@ -142,40 +139,17 @@ function App() {
   const handleDevLogin = async (e) => {
     e.preventDefault()
     try {
-      const res = await fetch('http://localhost:8000/api/auth/dev', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ password }) })
+      const res = await fetch('/api/auth/dev', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ password }) })
       if (res.ok) { const data = await res.json(); localStorage.setItem('token', data.token); setToken(data.token) }
       else alert("Неверный пароль")
     } catch (err) { alert("Ошибка сети") }
-  }
-
-  const handleProcessAction = async (name, action) => {
-    try {
-      const res = await fetchWithAuth(`http://localhost:8000/api/processes/${action}`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name })
-      })
-      if (res.ok) fetchStatus(); else { const err = await res.json(); alert(err.detail || "Ошибка") }
-    } catch (err) { alert("Ошибка сети") }
-  }
-
-  const handleForceKillAll = async () => {
-    if (!window.confirm("Убить ВСЕ процессы бота и коллектора? Это решит проблему 'Conflict'.")) return;
-    try {
-      const res = await fetchWithAuth('http://localhost:8000/api/processes/force-kill-all', { method: 'POST' })
-      if (res.ok) {
-        const data = await res.json()
-        alert(data.message)
-        fetchStatus()
-      }
-    } catch (err) { alert("Ошибка") }
   }
 
   const handleClearChannel = async () => {
     if (!window.confirm("ВНИМАНИЕ! Это удалит ВСЕ сообщения из целевого Telegram-канала. Продолжить?")) return;
     setClearing(true);
     try {
-      const res = await fetchWithAuth('http://localhost:8000/api/target-channel/clear', { method: 'POST' });
+      const res = await fetchWithAuth('/api/target-channel/clear', { method: 'POST' });
       if (res.ok) {
         const data = await res.json();
         alert(`✅ ${data.message}`);
@@ -192,24 +166,24 @@ function App() {
   const handleAction = async (postId, action) => {
     try { 
       const method = action === 'purge' ? 'DELETE' : 'POST';
-      if ((await fetchWithAuth(`http://localhost:8000/api/posts/${postId}/${action}`, { method })).ok) fetchData() 
+      if ((await fetchWithAuth(`/api/posts/${postId}/${action}`, { method })).ok) fetchData() 
     } catch (err) { alert("Ошибка") }
   }
 
   const handleEmptyTrash = async () => {
     if (!window.confirm("Удалить ВСЕ посты из корзины навсегда?")) return;
-    if ((await fetchWithAuth(`http://localhost:8000/api/posts/trash/empty`, { method: 'DELETE' })).ok) fetchData();
+    if ((await fetchWithAuth(`/api/posts/trash/empty`, { method: 'DELETE' })).ok) fetchData();
   }
 
   const handleRefetch = async (postId) => {
     setRefetching(true);
     try {
-      const res = await fetchWithAuth(`http://localhost:8000/api/posts/${postId}/refetch`, { method: 'POST' });
+      const res = await fetchWithAuth(`/api/posts/${postId}/refetch`, { method: 'POST' });
       if (res.ok) {
         const data = await res.json();
         setCacheBuster(Date.now());
         alert(`✅ ${data.message}`);
-        const single = await fetchWithAuth(`http://localhost:8000/api/posts/${postId}`).then(r => r.json());
+        const single = await fetchWithAuth(`/api/posts/${postId}`).then(r => r.json());
         setEditingPost(single);
         fetchData();
       } else {
@@ -222,10 +196,10 @@ function App() {
 
   const handleCreateManualPost = async () => {
     try {
-      const res = await fetchWithAuth('http://localhost:8000/api/manual-post', { method: 'POST' });
+      const res = await fetchWithAuth('/api/manual-post', { method: 'POST' });
       if (res.ok) {
         const data = await res.json();
-        const newPost = await fetchWithAuth(`http://localhost:8000/api/posts/${data.id}`).then(r => r.json());
+        const newPost = await fetchWithAuth(`/api/posts/${data.id}`).then(r => r.json());
         setEditingPost(newPost);
         setEditText("");
         setPostButtons([]);
@@ -242,7 +216,7 @@ function App() {
 
   const saveEdit = async () => {
     try {
-      await fetchWithAuth(`http://localhost:8000/api/posts/${editingPost.id}`, {
+      await fetchWithAuth(`/api/posts/${editingPost.id}`, {
         method: 'PATCH', headers: { 'Content-Type': 'application/json' }, 
         body: JSON.stringify({ text: editText, buttons_json: postButtons.filter(b => b.text && b.url) })
       })
@@ -253,7 +227,7 @@ function App() {
   const handleTranslate = async () => {
     if (!editText) return; setAiLoading(true)
     try {
-      const res = await fetchWithAuth('http://localhost:8000/api/ai/translate', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ text: editText }) })
+      const res = await fetchWithAuth('/api/ai/translate', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ text: editText }) })
       if (res.ok) setEditText((await res.json()).result)
     } finally { setAiLoading(false) }
   }
@@ -261,7 +235,7 @@ function App() {
   const handleRewrite = async () => {
     if (!editText) return; setAiLoading(true)
     try {
-      const res = await fetchWithAuth('http://localhost:8000/api/ai/rewrite', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ text: editText, word_count: wordCount ? parseInt(wordCount) : null }) })
+      const res = await fetchWithAuth('/api/ai/rewrite', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ text: editText, word_count: wordCount ? parseInt(wordCount) : null }) })
       if (res.ok) setEditText((await res.json()).result)
     } finally { setAiLoading(false) }
   }
@@ -269,7 +243,7 @@ function App() {
   const handleClearLinks = async () => {
     if (!editText) return; setLinkClearing(true)
     try {
-      const res = await fetchWithAuth('http://localhost:8000/api/ai/remove-links', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ text: editText }) })
+      const res = await fetchWithAuth('/api/ai/remove-links', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ text: editText }) })
       if (res.ok) setEditText((await res.json()).result)
     } finally { setLinkClearing(false) }
   }
@@ -278,7 +252,7 @@ function App() {
     if (!aiPrompt.trim()) return alert("Напиши задание для ИИ.");
     setAiGenerating(true);
     try {
-      const res = await fetchWithAuth('http://localhost:8000/api/ai/generate', {
+      const res = await fetchWithAuth('/api/ai/generate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ prompt: aiPrompt, base_text: editText })
@@ -304,7 +278,7 @@ function App() {
     setImageGenerating(true);
     try {
       if (replaceMediaId) {
-        try { await fetchWithAuth(`http://localhost:8000/api/media/${replaceMediaId}`, { method: 'DELETE' }); }
+        try { await fetchWithAuth(`/api/media/${replaceMediaId}`, { method: 'DELETE' }); }
         catch (e) { console.warn("Не удалось удалить старое медиа:", e); }
       }
       const body = {
@@ -315,7 +289,7 @@ function App() {
         model: imageModel,
         seed: imageSeed ? parseInt(imageSeed) : null,
       };
-      const res = await fetchWithAuth('http://localhost:8000/api/ai/generate-image', {
+      const res = await fetchWithAuth('/api/ai/generate-image', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body)
@@ -324,7 +298,7 @@ function App() {
         const data = await res.json();
         setCacheBuster(Date.now());
         setLastGeneratedMediaId(data.media_id || null);
-        const updated = await fetchWithAuth(`http://localhost:8000/api/posts/${editingPost.id}`).then(r => r.json());
+        const updated = await fetchWithAuth(`/api/posts/${editingPost.id}`).then(r => r.json());
         setEditingPost(updated);
         if (!overridePrompt) setImagePrompt("");
         fetchData();
@@ -343,7 +317,7 @@ function App() {
     if (!libImagePrompt.trim()) return alert("Введи промпт для картинки.");
     setLibImageGenerating(true);
     try {
-      const res = await fetchWithAuth('http://localhost:8000/api/ai/generate-image', {
+      const res = await fetchWithAuth('/api/ai/generate-image', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -374,34 +348,34 @@ function App() {
     const file = e.target.files[0]; if (!file) return
     setUploading(true); const formData = new FormData(); formData.append('file', file)
     try {
-      await fetchWithAuth(`http://localhost:8000/api/posts/${editingPost.id}/media`, { method: 'POST', body: formData })
+      await fetchWithAuth(`/api/posts/${editingPost.id}/media`, { method: 'POST', body: formData })
       setCacheBuster(Date.now());
-      const updated = await fetchWithAuth(`http://localhost:8000/api/posts/${editingPost.id}`).then(r => r.json())
+      const updated = await fetchWithAuth(`/api/posts/${editingPost.id}`).then(r => r.json())
       setEditingPost(updated); fetchData()
     } finally { setUploading(false); e.target.value = null }
   }
 
   const handleDeleteMedia = async (mediaId) => {
     if (!window.confirm("Удалить медиа?")) return
-    const res = await fetchWithAuth(`http://localhost:8000/api/media/${mediaId}`, { method: 'DELETE' })
+    const res = await fetchWithAuth(`/api/media/${mediaId}`, { method: 'DELETE' })
     if (!res.ok) return alert("Ошибка удаления")
-    const updated = await fetchWithAuth(`http://localhost:8000/api/posts/${editingPost.id}`).then(r => r.json())
+    const updated = await fetchWithAuth(`/api/posts/${editingPost.id}`).then(r => r.json())
     setEditingPost(updated); fetchData()
   }
   
   const handleSaveToLib = async (mediaId) => {
     try {
-      const res = await fetchWithAuth(`http://localhost:8000/api/posts/${editingPost.id}/media/save-to-library/${mediaId}`, { method: 'POST' })
+      const res = await fetchWithAuth(`/api/posts/${editingPost.id}/media/save-to-library/${mediaId}`, { method: 'POST' })
       if (res.ok) { fetchData(); alert("✅ Медиа сохранено в библиотеку!") }
       else { alert(`❌ Ошибка: ${(await res.json()).detail || "Не удалось сохранить"}`) }
     } catch (err) { alert("Ошибка сети при сохранении") }
   }
 
   const handleAttachFromLib = async (libId) => {
-    const res = await fetchWithAuth(`http://localhost:8000/api/posts/${editingPost.id}/media/from-library/${libId}`, { method: 'POST' })
+    const res = await fetchWithAuth(`/api/posts/${editingPost.id}/media/from-library/${libId}`, { method: 'POST' })
     if (!res.ok) return alert("Ошибка прикрепления медиа")
     setCacheBuster(Date.now());
-    const updated = await fetchWithAuth(`http://localhost:8000/api/posts/${editingPost.id}`).then(r => r.json())
+    const updated = await fetchWithAuth(`/api/posts/${editingPost.id}`).then(r => r.json())
     setEditingPost(updated); setShowLibSelector(false); fetchData()
   }
 
@@ -409,7 +383,7 @@ function App() {
     const file = e.target.files[0]; if (!file) return
     setLibUploading(true); const formData = new FormData(); formData.append('file', file)
     try {
-      await fetchWithAuth('http://localhost:8000/api/media-library/upload', { method: 'POST', body: formData })
+      await fetchWithAuth('/api/media-library/upload', { method: 'POST', body: formData })
       setCacheBuster(Date.now());
       fetchData()
     } finally { setLibUploading(false); e.target.value = null }
@@ -417,13 +391,13 @@ function App() {
 
   const handleDeleteFromLib = async (libId) => {
     if (!window.confirm("Удалить файл из библиотеки навсегда?")) return
-    await fetchWithAuth(`http://localhost:8000/api/media-library/${libId}`, { method: 'DELETE' })
+    await fetchWithAuth(`/api/media-library/${libId}`, { method: 'DELETE' })
     fetchData()
   }
 
   const handleDownload = async (key, type) => {
     try {
-      const response = await fetch(`http://localhost:9000/media/${key}`);
+      const response = await fetch(`/media/${key}`);
       if (!response.ok) throw new Error("Ошибка скачивания");
       const blob = await response.blob();
       const url = window.URL.createObjectURL(blob);
@@ -442,7 +416,7 @@ function App() {
 
   const handleAttachTemplate = async () => {
     if (!selectedTemplate) return
-    const res = await fetchWithAuth(`http://localhost:8000/api/posts/${editingPost.id}/templates`, { 
+    const res = await fetchWithAuth(`/api/posts/${editingPost.id}/templates`, { 
       method: 'POST', 
       headers: { 'Content-Type': 'application/json' }, 
       body: JSON.stringify({ template_id: parseInt(selectedTemplate), mode: attachMode }) 
@@ -451,7 +425,7 @@ function App() {
       const err = await res.json()
       return alert(`Ошибка прикрепления: ${err.detail}`)
     }
-    const updatedRes = await fetchWithAuth(`http://localhost:8000/api/posts/${editingPost.id}`)
+    const updatedRes = await fetchWithAuth(`/api/posts/${editingPost.id}`)
     if (!updatedRes.ok) return alert("Ошибка обновления данных")
     
     const updated = await updatedRes.json()
@@ -459,27 +433,27 @@ function App() {
   }
 
   const handleDetachTemplate = async (tplId) => {
-    const res = await fetchWithAuth(`http://localhost:8000/api/posts/${editingPost.id}/templates/${tplId}`, { method: 'DELETE' })
+    const res = await fetchWithAuth(`/api/posts/${editingPost.id}/templates/${tplId}`, { method: 'DELETE' })
     if (!res.ok) return alert("Ошибка открепления")
-    const updated = await fetchWithAuth(`http://localhost:8000/api/posts/${editingPost.id}`).then(r => r.json())
+    const updated = await fetchWithAuth(`/api/posts/${editingPost.id}`).then(r => r.json())
     setEditingPost(updated); fetchData()
   }
 
   const handleAttachSourceTemplate = async () => {
     if (!sourceTemplateId) return
-    await fetchWithAuth(`http://localhost:8000/api/sources/${editingSource.id}/templates`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ template_id: parseInt(sourceTemplateId) }) })
-    const updatedSources = await fetchWithAuth('http://localhost:8000/api/sources').then(r => r.json())
+    await fetchWithAuth(`/api/sources/${editingSource.id}/templates`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ template_id: parseInt(sourceTemplateId) }) })
+    const updatedSources = await fetchWithAuth('/api/sources').then(r => r.json())
     setEditingSource(updatedSources.find(s => s.id === editingSource.id)); setSourceTemplateId(""); fetchData()
   }
 
   const handleDetachSourceTemplate = async (tplId) => {
-    await fetchWithAuth(`http://localhost:8000/api/sources/${editingSource.id}/templates/${tplId}`, { method: 'DELETE' })
-    const updatedSources = await fetchWithAuth('http://localhost:8000/api/sources').then(r => r.json())
+    await fetchWithAuth(`/api/sources/${editingSource.id}/templates/${tplId}`, { method: 'DELETE' })
+    const updatedSources = await fetchWithAuth('/api/sources').then(r => r.json())
     setEditingSource(updatedSources.find(s => s.id === editingSource.id)); fetchData()
   }
 
   const handleToggleAutoPublish = async (source, checked) => {
-    await fetchWithAuth(`http://localhost:8000/api/sources/${source.id}/auto-publish`, {
+    await fetchWithAuth(`/api/sources/${source.id}/auto-publish`, {
       method: 'PATCH', headers: { 'Content-Type': 'application/json' }, 
       body: JSON.stringify({ auto_publish: checked, auto_template_id: checked ? source.auto_template_id : null })
     })
@@ -487,7 +461,7 @@ function App() {
   }
 
   const handleSetAutoTemplate = async (source, templateId) => {
-    await fetchWithAuth(`http://localhost:8000/api/sources/${source.id}/auto-publish`, {
+    await fetchWithAuth(`/api/sources/${source.id}/auto-publish`, {
       method: 'PATCH', headers: { 'Content-Type': 'application/json' }, 
       body: JSON.stringify({ auto_publish: source.auto_publish, auto_template_id: templateId ? parseInt(templateId) : null })
     })
@@ -507,7 +481,7 @@ function App() {
   const handleUpdateTemplate = async (e) => {
     e.preventDefault();
     const cleanButtons = editTemplateData.buttons_json.filter(b => b.text && b.url);
-    const res = await fetchWithAuth(`http://localhost:8000/api/templates/${editingTemplate.id}`, {
+    const res = await fetchWithAuth(`/api/templates/${editingTemplate.id}`, {
       method: 'PATCH', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ ...editTemplateData, buttons_json: cleanButtons, folder_id: editTemplateData.folder_id ? parseInt(editTemplateData.folder_id) : null })
     });
@@ -519,7 +493,7 @@ function App() {
     const file = e.target.files[0]; if (!file) return
     setEditTplUploading(true); const formData = new FormData(); formData.append('file', file)
     try {
-      const res = await fetchWithAuth('http://localhost:8000/api/upload', { method: 'POST', body: formData })
+      const res = await fetchWithAuth('/api/upload', { method: 'POST', body: formData })
       if (res.ok) { const data = await res.json(); setEditTemplateData(prev => ({ ...prev, media_json: [...(prev.media_json || []), data] })) }
     } finally { setEditTplUploading(false); e.target.value = null }
   }
@@ -533,7 +507,7 @@ function App() {
     const file = e.target.files[0]; if (!file) return
     setTplUploading(true); const formData = new FormData(); formData.append('file', file)
     try {
-      const res = await fetchWithAuth('http://localhost:8000/api/upload', { method: 'POST', body: formData })
+      const res = await fetchWithAuth('/api/upload', { method: 'POST', body: formData })
       if (res.ok) { const data = await res.json(); setNewTemplate(prev => ({ ...prev, media_json: [...(prev.media_json || []), data] })) }
     } finally { setTplUploading(false); e.target.value = null }
   }
@@ -546,30 +520,30 @@ function App() {
   const handleCreateTemplate = async (e) => {
     e.preventDefault()
     const cleanButtons = newTemplate.buttons_json.filter(b => b.text && b.url)
-    await fetchWithAuth('http://localhost:8000/api/templates', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ...newTemplate, buttons_json: cleanButtons, folder_id: newTemplate.folder_id ? parseInt(newTemplate.folder_id) : null }) })
+    await fetchWithAuth('/api/templates', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ...newTemplate, buttons_json: cleanButtons, folder_id: newTemplate.folder_id ? parseInt(newTemplate.folder_id) : null }) })
     setNewTemplate({ name: "", text: "", attach_mode: "append", folder_id: activeFolder || "", media_json: [], buttons_json: [] }); fetchData()
   }
 
-  const handleDeleteTemplate = async (id) => { if (window.confirm("Удалить шаблон?")) { await fetchWithAuth(`http://localhost:8000/api/templates/${id}`, { method: 'DELETE' }); fetchData() } }
-  const handleCreateFolder = async (e) => { e.preventDefault(); if (!newFolderName) return; await fetchWithAuth('http://localhost:8000/api/template-folders', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: newFolderName }) }); setNewFolderName(""); fetchData() }
-  const handleDeleteFolder = async (id) => { if (window.confirm("Удалить папку?")) { await fetchWithAuth(`http://localhost:8000/api/template-folders/${id}`, { method: 'DELETE' }); if (activeFolder === id) setActiveFolder(null); fetchData() } }
+  const handleDeleteTemplate = async (id) => { if (window.confirm("Удалить шаблон?")) { await fetchWithAuth(`/api/templates/${id}`, { method: 'DELETE' }); fetchData() } }
+  const handleCreateFolder = async (e) => { e.preventDefault(); if (!newFolderName) return; await fetchWithAuth('/api/template-folders', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: newFolderName }) }); setNewFolderName(""); fetchData() }
+  const handleDeleteFolder = async (id) => { if (window.confirm("Удалить папку?")) { await fetchWithAuth(`/api/template-folders/${id}`, { method: 'DELETE' }); if (activeFolder === id) setActiveFolder(null); fetchData() } }
 
   const handleAddSource = async (e) => {
     e.preventDefault(); if (!newSourceInput) return
     setAddingSource(true)
     try {
-      const res = await fetchWithAuth('http://localhost:8000/api/sources', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ channel_input: newSourceInput }) })
+      const res = await fetchWithAuth('/api/sources', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ channel_input: newSourceInput }) })
       if (res.ok) { setNewSourceInput(""); fetchData() } else { alert(`Ошибка: ${(await res.json()).detail}`) }
     } finally { setAddingSource(false) }
   }
 
-  const handleToggleSource = async (id) => { await fetchWithAuth(`http://localhost:8000/api/sources/${id}/toggle`, { method: 'PATCH' }); fetchData() }
-  const handleDeleteSource = async (id) => { if (window.confirm("Удалить источник?")) { await fetchWithAuth(`http://localhost:8000/api/sources/${id}`, { method: 'DELETE' }); fetchData() } }
+  const handleToggleSource = async (id) => { await fetchWithAuth(`/api/sources/${id}/toggle`, { method: 'PATCH' }); fetchData() }
+  const handleDeleteSource = async (id) => { if (window.confirm("Удалить источник?")) { await fetchWithAuth(`/api/sources/${id}`, { method: 'DELETE' }); fetchData() } }
 
   const openEditor = (post) => { setEditingPost(post); setEditText(post.text || ""); setWordCount(""); setPostButtons(post.buttons_json || []); setAiPrompt(""); setImagePrompt(""); setLastGeneratedMediaId(null) }
   const closeEditor = () => { setEditingPost(null); setEditText(""); setPostButtons([]); setShowLibSelector(false); setAiPrompt(""); setImagePrompt(""); setLastGeneratedMediaId(null) }
   
-  const getMediaUrl = (key) => `http://localhost:9000/media/${key}?v=${cacheBuster}`
+  const getMediaUrl = (key) => `/media/${key}?v=${cacheBuster}`
   const getStatusColor = (status) => ({ new: 'bg-blue-100 text-blue-800', published: 'bg-green-100 text-green-800', scheduled: 'bg-yellow-100 text-yellow-800', deleted: 'bg-red-100 text-red-800' }[status] || 'bg-gray-100')
 
   if (!token) {
@@ -614,24 +588,11 @@ function App() {
             <div className="flex items-center gap-2 bg-gray-50 px-2 py-1 rounded border">
               <span className={`w-2.5 h-2.5 rounded-full ${status.bot_online ? 'bg-green-500 animate-pulse' : 'bg-red-500'}`}></span>
               <span className={status.bot_online ? 'text-green-700' : 'text-red-700'}>Бот</span>
-              {procStatus.bot ? (
-                <button onClick={() => handleProcessAction('bot', 'stop')} className="text-xs text-red-500 hover:underline ml-2">Стоп</button>
-              ) : (
-                <button onClick={() => handleProcessAction('bot', 'start')} className="text-xs text-green-600 hover:underline ml-2">Запуск</button>
-              )}
             </div>
             <div className="flex items-center gap-2 bg-gray-50 px-2 py-1 rounded border">
               <span className={`w-2.5 h-2.5 rounded-full ${status.collector_online ? 'bg-green-500 animate-pulse' : 'bg-red-500'}`}></span>
               <span className={status.collector_online ? 'text-green-700' : 'text-red-700'}>Сборщик</span>
-              {procStatus.collector ? (
-                <button onClick={() => handleProcessAction('collector', 'stop')} className="text-xs text-red-500 hover:underline ml-2">Стоп</button>
-              ) : (
-                <button onClick={() => handleProcessAction('collector', 'start')} className="text-xs text-green-600 hover:underline ml-2">Запуск</button>
-              )}
             </div>
-            <button onClick={handleForceKillAll} className="text-xs bg-red-600 text-white px-2 py-1 rounded hover:bg-red-700 font-bold" title="Убить все процессы bot.main и collector.main">
-              🔧 Fix
-            </button>
           </div>
         </div>
         <button onClick={() => { localStorage.removeItem('token'); setToken(null); }} className="text-sm text-red-500 hover:underline">Выйти</button>
