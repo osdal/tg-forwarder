@@ -100,7 +100,7 @@
                 const body = document.body;
                 if (data.bg_color) body.style.backgroundColor = data.bg_color;
                 
-                // Меняем цвета заголовков и текста
+                // Цвета заголовков
                 if (data.title_color) {
                     document.getElementById('hero-title').style.color = data.title_color;
                     document.getElementById('nav-logo').style.color = data.title_color;
@@ -108,6 +108,7 @@
                     document.getElementById('cta-title').style.color = data.title_color;
                 }
                 
+                // Цвета обычного текста
                 if (data.subtitle_color) {
                     document.getElementById('hero-subtitle').style.color = data.subtitle_color;
                     document.getElementById('features-subtitle').style.color = data.subtitle_color;

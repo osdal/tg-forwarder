@@ -15,15 +15,25 @@ content:
         options:
           values:
             - name: "#0a0a0a"
-              label: "Темный (по умолчанию)"
+              label: "Черный (по умолчанию)"
             - name: "#ffffff"
               label: "Белый (светлая тема)"
+            - name: "#f8fafc"
+              label: "Светло-серый (мягкая тема)"
             - name: "#0f172a"
               label: "Темно-синий (Navy)"
+            - name: "#172554"
+              label: "Глубокий синий"
+            - name: "#2e1065"
+              label: "Темно-фиолетовый"
+            - name: "#022c22"
+              label: "Темно-зеленый"
+            - name: "#450a0a"
+              label: "Темно-бордовый"
             - name: "#1e1e1e"
-              label: "Серый (Графит)"
+              label: "Графит"
       - name: title_color
-        label: "🎨 Цвет заголовка"
+        label: "🎨 Цвет заголовков"
         type: select
         options:
           values:
@@ -33,8 +43,18 @@ content:
               label: "Черный (для светлой темы)"
             - name: "#3b82f6"
               label: "Синий"
+            - name: "#a855f7"
+              label: "Фиолетовый"
+            - name: "#10b981"
+              label: "Изумрудный"
+            - name: "#f59e0b"
+              label: "Оранжевый"
+            - name: "#ef4444"
+              label: "Красный"
+            - name: "#eab308"
+              label: "Желтый"
       - name: subtitle_color
-        label: "🎨 Цвет подзаголовка"
+        label: "🎨 Цвет обычного текста (подзаголовки)"
         type: select
         options:
           values:
@@ -43,7 +63,15 @@ content:
             - name: "#4b5563"
               label: "Темно-серый (для светлой темы)"
             - name: "#d1d5db"
-              label: "Светло-серый"
+              label: "Светло-серый (для темной темы)"
+            - name: "#93c5fd"
+              label: "Светло-синий"
+            - name: "#d8b4fe"
+              label: "Светло-фиолетовый"
+            - name: "#86efac"
+              label: "Светло-зеленый"
+            - name: "#fde047"
+              label: "Светло-желтый"
 
       # --- НАСТРОЙКИ ЗАГОЛОВКА ---
       - name: hero_title
