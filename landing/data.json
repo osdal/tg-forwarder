@@ -1,19 +1,15 @@
 {
-  "bg_color": "#0a0a0a",
+  "bg_color": "#ffffff",
   "title_color": "#ffffff",
   "subtitle_color": "#9ca3af",
-  
   "hero_title": "Автоматизируй свой <br> <span class=\"gradient-text\">Telegram-канал</span>",
   "hero_title_size": "text-5xl md:text-7xl",
   "hero_title_weight": "font-extrabold",
   "hero_title_font": "font-sans",
-  
   "hero_subtitle": "Собирай посты из других каналов, редактируй их с помощью ИИ, генерируй уникальные картинки и публикуй по расписанию. Всё в одной веб-панели.",
   "hero_subtitle_size": "text-xl",
   "hero_subtitle_font": "font-sans",
-  
   "hero_btn_text": "Скачать с GitHub",
-  
   "features": [
     {
       "icon": "🤖",
