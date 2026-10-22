@@ -1,0 +1,4 @@
+tg-forwarder.duckdns.org {
+    # Проксируем все запросы на наш фронтенд, который слушает порт 8080
+    reverse_proxy localhost:8080
+}
