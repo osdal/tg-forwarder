@@ -1,16 +1,58 @@
-# React + Vite
+# 📨 TG Forwarder
 
-This template provides a minimal setup to get React working in Vite with HMR and some Oxlint rules.
+Полноценная студия контента для Telegram: автоматический сбор постов из каналов-источников, буфер с ручной модерацией, шаблоны с медиа и inline-кнопками, авто-публикация, отложенный постинг, интеграция с нейросетью (текст + картинки) и веб-панель с метриками.
 
-Currently, two official plugins are available:
+---
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+## 📖 Содержание
 
-## React Compiler
+- [Возможности](#-возможности)
+- [Архитектура](#-архитектура)
+- [Технологический стек](#-технологический-стек)
+- [Требования](#-требования)
+- [Быстрый старт (Локально)](#-быстрый-старт-локально)
+- [Управление контейнерами](#-управление-контейнерами)
+- [Резервное копирование (Бэкапы)](#-резервное-копирование-бэкапы)
+- [Пересборка после изменений](#-пересборка-после-изменений)
+- [Генерация сессии Telegram](#-генерация-сессии-telegram)
+- [Конфигурация](#-конфигурация-env)
+- [Использование](#-использование)
+- [Деплой на сервер (VPS / Oracle Cloud)](#-деплой-на-сервер-vps--oracle-cloud)
+- [Перенос данных (с локального ПК на сервер)](#-перенос-данных-с-локального-пк-на-сервер)
+- [Структура проекта](#-структура-проекта)
+- [Troubleshooting](#-troubleshooting)
+- [Лицензия](#-лицензия)
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+---
 
-## Expanding the Oxlint configuration
+## 🏗 Архитектура
 
-If you are developing a production application, we recommend using TypeScript with type-aware lint rules enabled. Check out the [TS template](https://github.com/vitejs/vite/tree/main/packages/create-vite/template-react-ts) for information on how to integrate TypeScript and Oxlint's TypeScript related rules in your project.
+Проект полностью упакован в **Docker**. Все сервисы (база, бот, сборщик, API, фронтенд) запускаются одной командой и работают изолированно.
+
+```text
+┌─────────────────┐         ┌─────────────────┐         ┌─────────────────┐
+│   Collector     │         │   Publisher     │         │      Bot        │
+│  (Telethon)     │         │   (aiogram)     │         │   (aiogram)     │
+│  Контейнер      │         │  Встроен в API  │         │  Контейнер      │
+└────────┬────────┘         └────────┬────────┘         └────────┬────────┘
+         │                           │                           │
+         └───────────┬───────────────┴───────────┬───────────────┘
+                     │                           │
+              ┌──────▼──────┐             ┌──────▼──────┐
+              │  PostgreSQL │             │    MinIO    │
+              │  Контейнер  │             │  Контейнер  │
+              └──────┬──────┘             └──────┬──────┘
+                     │                           │
+         ┌───────────┴───────────┬───────────────┘
+         │                       │
+  ┌──────▼──────┐         ┌──────▼──────┐
+  │  FastAPI    │         │  Nginx      │
+  │  Контейнер  │         │  (Frontend) │
+  └──────┬──────┘         └──────┬──────┘
+         │                       │
+         └───────────┬───────────┘
+                     │
+              ┌──────▼──────┐
+              │    Redis    │
+              │  Контейнер  │
+              └─────────────┘
