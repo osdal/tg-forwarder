@@ -1,0 +1,33 @@
+media:
+  input: landing/images
+  output: /images
+
+content:
+  - name: landing
+    label: "Главная страница"
+    type: file
+    path: landing/data.json
+    fields:
+      - name: hero_title
+        label: "Главный заголовок"
+        type: string
+      - name: hero_subtitle
+        label: "Подзаголовок (описание)"
+        type: text
+      - name: hero_btn_text
+        label: "Текст кнопки (Скачать)"
+        type: string
+      - name: features
+        label: "Блоки с возможностями"
+        type: object
+        list: true
+        fields:
+          - name: icon
+            label: "Иконка (эмодзи)"
+            type: string
+          - name: title
+            label: "Заголовок блока"
+            type: string
+          - name: description
+            label: "Описание блока"
+            type: text

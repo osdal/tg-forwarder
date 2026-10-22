@@ -26,7 +26,6 @@
                 <div class="hidden md:block">
                     <div class="ml-10 flex items-baseline space-x-8">
                         <a href="#features" class="hover:text-blue-400 transition">Возможности</a>
-                        <a href="#how-it-works" class="hover:text-blue-400 transition">Как работает</a>
                         <a href="#pricing" class="hover:text-blue-400 transition">Цены</a>
                     </div>
                 </div>
@@ -45,25 +44,18 @@
                 <span class="flex h-2 w-2 rounded-full bg-blue-500 animate-pulse"></span>
                 Версия 1.0 уже доступна
             </div>
-            <h1 class="text-5xl md:text-7xl font-extrabold tracking-tight mb-6 leading-tight">
+            <h1 class="text-5xl md:text-7xl font-extrabold tracking-tight mb-6 leading-tight" id="hero-title">
                 Автоматизируй свой <br> <span class="gradient-text">Telegram-канал</span>
             </h1>
-            <p class="text-xl text-gray-400 mb-10 max-w-2xl mx-auto">
-                Собирай посты из других каналов, редактируй их с помощью ИИ, генерируй уникальные картинки и публикуй по расписанию. Всё в одной веб-панели.
+            <p class="text-xl text-gray-400 mb-10 max-w-2xl mx-auto" id="hero-subtitle">
+                Собирай посты из других каналов, редактируй их с помощью ИИ...
             </p>
             <div class="flex flex-col sm:flex-row gap-4 justify-center">
                 <a href="https://github.com/osdal/tg-forwarder" target="_blank" class="bg-white text-black px-8 py-4 rounded-xl font-bold text-lg hover:bg-gray-200 transition flex items-center justify-center gap-2">
                     <svg class="w-5 h-5" fill="currentColor" viewBox="0 0 24 24"><path fill-rule="evenodd" d="M12 2C6.477 2 2 6.484 2 12.017c0 4.425 2.865 8.18 6.839 9.504.5.092.682-.217.682-.483 0-.237-.008-.868-.013-1.703-2.782.605-3.369-1.343-3.369-1.343-.454-1.158-1.11-1.466-1.11-1.466-.908-.62.069-.608.069-.608 1.003.07 1.531 1.032 1.531 1.032.892 1.53 2.341 1.088 2.91.832.092-.647.35-1.088.636-1.338-2.22-.253-4.555-1.113-4.555-4.951 0-1.093.39-1.988 1.029-2.688-.103-.253-.446-1.272.098-2.65 0 0 .84-.27 2.75 1.026A9.564 9.564 0 0112 6.844c.85.004 1.705.115 2.504.337 1.909-1.296 2.747-1.027 2.747-1.027.546 1.379.202 2.398.1 2.651.64.7 1.028 1.595 1.028 2.688 0 3.848-2.339 4.695-4.566 4.943.359.309.678.92.678 1.855 0 1.338-.012 2.419-.012 2.747 0 .268.18.58.688.482A10.019 10.019 0 0022 12.017C22 6.484 17.522 2 12 2z" clip-rule="evenodd"></path></svg>
-                    Скачать с GitHub
+                    <span id="hero-btn-text">Скачать с GitHub</span>
                 </a>
-                <a href="#features" class="glass px-8 py-4 rounded-xl font-bold text-lg hover:bg-white/10 transition">Узнать больше</a>
             </div>
-        </div>
-
-        <!-- Скриншот (замени ссылку на свою, если нужно) -->
-        <div class="max-w-5xl mx-auto mt-16 relative">
-            <div class="absolute inset-0 bg-gradient-to-t from-[#0a0a0a] via-transparent to-transparent z-10"></div>
-            <img src="https://raw.githubusercontent.com/osdal/tg-forwarder/main/docs/screenshots/main.png" alt="Интерфейс" class="rounded-2xl border border-white/10 shadow-2xl" onerror="this.src='https://placehold.co/1200x600/1a1a1a/ffffff?text=TG+Forwarder+Interface'">
         </div>
     </section>
 
@@ -74,43 +66,8 @@
                 <h2 class="text-3xl md:text-4xl font-bold mb-4">Всё, что нужно для роста канала</h2>
                 <p class="text-gray-400 text-lg">Перестань тратить часы на рутину. Доверь это автоматизации.</p>
             </div>
-            <div class="grid grid-cols-1 md:grid-cols-3 gap-8">
-                <!-- Feature 1 -->
-                <div class="glass p-8 rounded-2xl hover:bg-white/10 transition duration-300">
-                    <div class="w-12 h-12 bg-blue-500/20 rounded-lg flex items-center justify-center text-2xl mb-6">🤖</div>
-                    <h3 class="text-xl font-bold mb-3">ИИ-Помощник</h3>
-                    <p class="text-gray-400">Генерация текста с нуля, рерайт, перевод и очистка от ссылок. Встроенные нейросети прямо в редакторе постов.</p>
-                </div>
-                <!-- Feature 2 -->
-                <div class="glass p-8 rounded-2xl hover:bg-white/10 transition duration-300">
-                    <div class="w-12 h-12 bg-purple-500/20 rounded-lg flex items-center justify-center text-2xl mb-6">🎨</div>
-                    <h3 class="text-xl font-bold mb-3">Генерация картинок</h3>
-                    <p class="text-gray-400">Создавай уникальные изображения по текстовому промпту. Бесплатно, без ограничений и с готовыми пресетами под Telegram.</p>
-                </div>
-                <!-- Feature 3 -->
-                <div class="glass p-8 rounded-2xl hover:bg-white/10 transition duration-300">
-                    <div class="w-12 h-12 bg-pink-500/20 rounded-lg flex items-center justify-center text-2xl mb-6">📥</div>
-                    <h3 class="text-xl font-bold mb-3">Сбор контента</h3>
-                    <p class="text-gray-400">Подключи любые каналы-источники. Бот будет автоматически ловить новые посты и складывать их в твою очередь.</p>
-                </div>
-                <!-- Feature 4 -->
-                <div class="glass p-8 rounded-2xl hover:bg-white/10 transition duration-300">
-                    <div class="w-12 h-12 bg-green-500/20 rounded-lg flex items-center justify-center text-2xl mb-6">✅</div>
-                    <h3 class="text-xl font-bold mb-3">Удобная модерация</h3>
-                    <p class="text-gray-400">Публикуй в один клик, редактируй шаблоны, добавляй кнопки и отправляй в корзину то, что не подходит.</p>
-                </div>
-                <!-- Feature 5 -->
-                <div class="glass p-8 rounded-2xl hover:bg-white/10 transition duration-300">
-                    <div class="w-12 h-12 bg-yellow-500/20 rounded-lg flex items-center justify-center text-2xl mb-6">⏰</div>
-                    <h3 class="text-xl font-bold mb-3">Отложенный постинг</h3>
-                    <p class="text-gray-400">Настраивай автопубликацию для источников и создавай отложенные посты на конкретное время.</p>
-                </div>
-                <!-- Feature 6 -->
-                <div class="glass p-8 rounded-2xl hover:bg-white/10 transition duration-300">
-                    <div class="w-12 h-12 bg-red-500/20 rounded-lg flex items-center justify-center text-2xl mb-6">📊</div>
-                    <h3 class="text-xl font-bold mb-3">Метрики и аналитика</h3>
-                    <p class="text-gray-400">Отслеживай КПД каждого источника и смотри, сколько постов было опубликовано или отклонено.</p>
-                </div>
+            <!-- Блоки будут вставлены скриптом -->
+            <div id="features-grid" class="grid grid-cols-1 md:grid-cols-3 gap-8">
             </div>
         </div>
     </section>
@@ -129,8 +86,37 @@
 
     <!-- Footer -->
     <footer class="border-t border-white/10 py-12 text-center text-gray-500">
-        <p>© 2026 TG Forwarder. Сделано с ❤️ для Telegram- creators.</p>
+        <p>© 2026 TG Forwarder. Сделано с ❤️ для Telegram-creators.</p>
     </footer>
 
+    <!-- Скрипт для загрузки данных из JSON (Pages CMS) -->
+    <script>
+        document.addEventListener('DOMContentLoaded', async () => {
+            try {
+                const response = await fetch('/tg-forwarder/data.json'); // Путь к data.json
+                if (!response.ok) throw new Error('Ошибка загрузки данных');
+                const data = await response.json();
+
+                // Подставляем заголовок и описание
+                if (data.hero_title) document.getElementById('hero-title').innerHTML = data.hero_title.replace('Telegram-канал', '<span class="gradient-text">Telegram-канал</span>');
+                if (data.hero_subtitle) document.getElementById('hero-subtitle').textContent = data.hero_subtitle;
+                if (data.hero_btn_text) document.getElementById('hero-btn-text').textContent = data.hero_btn_text;
+
+                // Генерируем блоки возможностей
+                const grid = document.getElementById('features-grid');
+                if (data.features && data.features.length > 0) {
+                    grid.innerHTML = data.features.map(f => `
+                        <div class="glass p-8 rounded-2xl hover:bg-white/10 transition duration-300">
+                            <div class="w-12 h-12 bg-blue-500/20 rounded-lg flex items-center justify-center text-2xl mb-6">${f.icon}</div>
+                            <h3 class="text-xl font-bold mb-3">${f.title}</h3>
+                            <p class="text-gray-400">${f.description}</p>
+                        </div>
+                    `).join('');
+                }
+            } catch (error) {
+                console.error('Не удалось загрузить данные CMS:', error);
+            }
+        });
+    </script>
 </body>
 </html>

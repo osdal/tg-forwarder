@@ -1,4 +1,9 @@
+# Твой основной проект
 tg-forwarder.duckdns.org {
-    # Проксируем все запросы на наш фронтенд, который слушает порт 8080
     reverse_proxy localhost:8080
+}
+
+# Новый блог на WordPress
+blog-tg.duckdns.org {
+    reverse_proxy localhost:8081
 }
