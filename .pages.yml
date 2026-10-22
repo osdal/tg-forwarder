@@ -14,24 +14,9 @@ content:
         type: select
         options:
           values:
-            - name: "#0a0a0a"
-              label: "Черный (по умолчанию)"
-            - name: "#ffffff"
-              label: "Белый (светлая тема)"
-            - name: "#f8fafc"
-              label: "Светло-серый (мягкая тема)"
-            - name: "#0f172a"
-              label: "Темно-синий (Navy)"
-            - name: "#172554"
-              label: "Глубокий синий"
-            - name: "#2e1065"
-              label: "Темно-фиолетовый"
-            - name: "#022c22"
-              label: "Темно-зеленый"
-            - name: "#450a0a"
-              label: "Темно-бордовый"
-            - name: "#1e1e1e"
-              label: "Графит"
+            - { name: "#0a0a0a", label: "Черный" }
+            - { name: "#ffffff", label: "Белый" }
+            - { name: "#0f172a", label: "Темно-синий" }
 
       # --- НАСТРОЙКИ ЗАГОЛОВКА (Hero) ---
       - name: hero_title
@@ -45,35 +30,29 @@ content:
             - { name: "#ffffff", label: "Белый" }
             - { name: "#000000", label: "Черный" }
             - { name: "#3b82f6", label: "Синий" }
-            - { name: "#a855f7", label: "Фиолетовый" }
-            - { name: "#10b981", label: "Изумрудный" }
-            - { name: "#f59e0b", label: "Оранжевый" }
       - name: hero_title_size
         label: "1. Заголовок (Размер)"
         type: select
         options:
           values:
             - { name: "text-4xl md:text-5xl", label: "Средний" }
-            - { name: "text-5xl md:text-7xl", label: "Большой (по умолчанию)" }
-            - { name: "text-6xl md:text-8xl", label: "Огромный" }
+            - { name: "text-5xl md:text-7xl", label: "Большой" }
       - name: hero_title_weight
         label: "1. Заголовок (Жирность)"
         type: select
         options:
           values:
-            - { name: "font-normal", label: "Обычный" }
             - { name: "font-bold", label: "Жирный" }
-            - { name: "font-extrabold", label: "Очень жирный (по умолчанию)" }
+            - { name: "font-extrabold", label: "Очень жирный" }
       - name: hero_title_font
         label: "1. Заголовок (Шрифт)"
         type: select
         options:
           values:
-            - { name: "font-sans", label: "Без засечек (по умолчанию)" }
-            - { name: "font-serif", label: "С засечками (классика)" }
-            - { name: "font-mono", label: "Моноширинный (техно)" }
+            - { name: "font-sans", label: "Без засечек" }
+            - { name: "font-serif", label: "С засечками" }
 
-      # --- НАСТРОЙКИ ПОДЗАГОЛОВКА (Hero) ---
+      # --- НАСТРОЙКИ ПОДЗАГОЛОВКА ---
       - name: hero_subtitle
         label: "2. Подзаголовок (Текст)"
         type: text
@@ -82,20 +61,15 @@ content:
         type: select
         options:
           values:
-            - { name: "#9ca3af", label: "Серый (по умолчанию)" }
+            - { name: "#9ca3af", label: "Серый" }
             - { name: "#4b5563", label: "Темно-серый" }
-            - { name: "#d1d5db", label: "Светло-серый" }
-            - { name: "#93c5fd", label: "Светло-синий" }
-            - { name: "#d8b4fe", label: "Светло-фиолетовый" }
-            - { name: "#86efac", label: "Светло-зеленый" }
       - name: hero_subtitle_size
         label: "2. Подзаголовок (Размер)"
         type: select
         options:
           values:
             - { name: "text-lg", label: "Маленький" }
-            - { name: "text-xl", label: "Средний (по умолчанию)" }
-            - { name: "text-2xl", label: "Большой" }
+            - { name: "text-xl", label: "Средний" }
       - name: hero_subtitle_font
         label: "2. Подзаголовок (Шрифт)"
         type: select
@@ -104,12 +78,11 @@ content:
             - { name: "font-sans", label: "Без засечек" }
             - { name: "font-serif", label: "С засечками" }
 
-      # --- КНОПКА ---
       - name: hero_btn_text
-        label: "3. Текст кнопки (Скачать)"
+        label: "3. Текст кнопки"
         type: string
 
-      # --- СЕКЦИЯ ВОЗМОЖНОСТЕЙ ---
+      # --- ВОЗМОЖНОСТИ ---
       - name: features_title_color
         label: "4. Заголовок блока возможностей (Цвет)"
         type: select
@@ -117,8 +90,6 @@ content:
           values:
             - { name: "#ffffff", label: "Белый" }
             - { name: "#000000", label: "Черный" }
-            - { name: "#3b82f6", label: "Синий" }
-            - { name: "#a855f7", label: "Фиолетовый" }
       - name: features_subtitle_color
         label: "5. Подзаголовок блока возможностей (Цвет)"
         type: select
@@ -126,9 +97,6 @@ content:
           values:
             - { name: "#9ca3af", label: "Серый" }
             - { name: "#4b5563", label: "Темно-серый" }
-            - { name: "#d1d5db", label: "Светло-серый" }
-
-      # --- КАРТОЧКИ ВОЗМОЖНОСТЕЙ ---
       - name: card_title_color
         label: "6. Заголовки карточек (Цвет)"
         type: select
@@ -136,7 +104,6 @@ content:
           values:
             - { name: "#ffffff", label: "Белый" }
             - { name: "#000000", label: "Черный" }
-            - { name: "#3b82f6", label: "Синий" }
       - name: card_desc_color
         label: "7. Описания карточек (Цвет)"
         type: select
@@ -144,20 +111,24 @@ content:
           values:
             - { name: "#9ca3af", label: "Серый" }
             - { name: "#4b5563", label: "Темно-серый" }
-            - { name: "#d1d5db", label: "Светло-серый" }
 
-      # --- СПИСОК ВОЗМОЖНОСТЕЙ ---
       - name: features
-        label: "8. Блоки с возможностями"
+        label: "8. Блоки с возможностями (Список)"
         type: object
         list: true
         fields:
-          - name: icon
-            label: "Иконка (эмодзи)"
-            type: string
-          - name: title
-            label: "Заголовок блока"
-            type: string
-          - name: description
-            label: "Описание блока"
-            type: text
+          - { name: icon, label: "Иконка (эмодзи)", type: string }
+          - { name: title, label: "Заголовок", type: string }
+          - { name: description, label: "Описание", type: text }
+
+      # --- НОВАЯ СЕКЦИЯ FAQ ---
+      - name: faq_title
+        label: "9. Заголовок секции FAQ"
+        type: string
+      - name: faq_items
+        label: "10. Вопросы и ответы (Список)"
+        type: object
+        list: true
+        fields:
+          - { name: question, label: "Вопрос", type: string }
+          - { name: answer, label: "Ответ", type: text }
