@@ -54,3 +54,11 @@ Thumbs.db
 .env.bak
 
 migration/
+
+# Временные файлы и бэкапы
+qr_out/
+qr_login.png
+session.txt
+backups/
+*.sql.gz
+*.tar.gz
