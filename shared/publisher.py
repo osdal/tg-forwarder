@@ -26,6 +26,25 @@ bot = Bot(
     default=DefaultBotProperties(parse_mode=ParseMode.HTML),
 )
 
+def split_text_into_chunks(text: str, limit: int) -> list[str]:
+    """Разбивает текст на части, не превышающие лимит."""
+    if not text:
+        return []
+    parts = []
+    while len(text) > limit:
+        split_idx = text.rfind('\n', 0, limit)
+        if split_idx == -1:
+            split_idx = text.rfind(' ', 0, limit)
+        if split_idx == -1:
+            split_idx = limit
+        
+        parts.append(text[:split_idx].strip())
+        text = text[split_idx:].strip()
+    
+    if text:
+        parts.append(text)
+    return parts
+
 async def get_first_target_channel() -> TargetChannel | None:
     async with SessionLocal() as session:
         result = await session.execute(select(TargetChannel).where(TargetChannel.enabled == True).limit(1))
@@ -47,15 +66,32 @@ async def send_separate_template(chat_id: int, template: Template):
     
     if not media_json:
         if text or reply_markup:
-            await bot.send_message(chat_id=chat_id, text=text, reply_markup=reply_markup)
+            text_parts = split_text_into_chunks(text, 4096)
+            for i, part in enumerate(text_parts):
+                rm = reply_markup if i == len(text_parts) - 1 else None
+                await bot.send_message(chat_id=chat_id, text=part, reply_markup=rm)
         return
 
     media_list = []
+    caption_text = text
+    remaining_text = ""
+    
+    if len(caption_text) > 1024:
+        split_idx = caption_text.rfind('\n', 0, 1024)
+        if split_idx == -1:
+            split_idx = caption_text.rfind(' ', 0, 1024)
+        if split_idx == -1:
+            split_idx = 1024
+        caption_text = caption_text[:split_idx].strip()
+        remaining_text = text[split_idx:].strip()
+
     for i, item in enumerate(media_json):
         data = load_media_bytes(item["key"])
         ext = item["key"].rsplit(".", 1)[-1].lower()
         file = BufferedInputFile(data, filename=f"media.{ext}")
-        caption = text if i == 0 else None
+        
+        # Передаем caption сразу при создании, а не после
+        caption = caption_text if i == 0 else None
 
         if item["type"] in ("photo", "animation"):
             media_list.append(InputMediaPhoto(media=file, caption=caption))
@@ -64,13 +100,32 @@ async def send_separate_template(chat_id: int, template: Template):
         else:
             media_list.append(InputMediaDocument(media=file, caption=caption))
 
+    sent_messages = []
     if len(media_list) == 1:
+        # Для одиночного медиа caption уже внутри объекта, но send_photo ждет его отдельно
+        # Поэтому мы используем прямую отправку файла
         if isinstance(media_list[0], InputMediaPhoto):
-            await bot.send_photo(chat_id=chat_id, photo=media_list[0].media, caption=text, reply_markup=reply_markup)
+            sent = await bot.send_photo(chat_id=chat_id, photo=media_list[0].media, caption=caption_text, reply_markup=reply_markup)
         else:
-            await bot.send_document(chat_id=chat_id, document=media_list[0].media, caption=text, reply_markup=reply_markup)
+            sent = await bot.send_document(chat_id=chat_id, document=media_list[0].media, caption=caption_text, reply_markup=reply_markup)
+        sent_messages.append(sent)
     else:
-        await bot.send_media_group(chat_id=chat_id, media=media_list, reply_markup=reply_markup)
+        sent = await bot.send_media_group(chat_id=chat_id, media=media_list)
+        if isinstance(sent, list):
+            sent_messages.extend(sent)
+        else:
+            sent_messages.append(sent)
+            
+        if reply_markup:
+            kb_msg = await bot.send_message(chat_id=chat_id, text="👇", reply_markup=reply_markup, reply_to_message_id=sent_messages[0].message_id)
+            sent_messages.append(kb_msg)
+
+    if remaining_text:
+        text_parts = split_text_into_chunks(remaining_text, 4096)
+        for part in text_parts:
+            reply_to_id = sent_messages[0].message_id if sent_messages else None
+            sent_msg = await bot.send_message(chat_id=chat_id, text=part, reply_to_message_id=reply_to_id)
+            sent_messages.append(sent_msg)
 
 async def publish_post_to_channel(post_id: int) -> tuple[bool, str]:
     async with SessionLocal() as session:
@@ -109,7 +164,6 @@ async def publish_post_to_channel(post_id: int) -> tuple[bool, str]:
                 t = pt.template
                 if not t: continue
                 
-                # Берем режим из привязки к посту, если нет — из самого шаблона
                 current_mode = pt.mode or t.attach_mode 
                 
                 if t.text:
@@ -129,12 +183,26 @@ async def publish_post_to_channel(post_id: int) -> tuple[bool, str]:
         if append_texts: parts.append("\n\n".join(append_texts))
         final_text = "\n\n".join(parts)
 
+        caption_text = final_text
+        remaining_text = ""
+        
+        if len(caption_text) > 1024:
+            split_idx = caption_text.rfind('\n', 0, 1024)
+            if split_idx == -1:
+                split_idx = caption_text.rfind(' ', 0, 1024)
+            if split_idx == -1:
+                split_idx = 1024
+            caption_text = caption_text[:split_idx].strip()
+            remaining_text = final_text[split_idx:].strip()
+
         media_list = []
         for i, item in enumerate(all_media_items):
             data = load_media_bytes(item["key"])
             ext = item["key"].rsplit(".", 1)[-1].lower()
             file = BufferedInputFile(data, filename=f"media.{ext}")
-            caption = final_text if i == 0 else None
+
+            # Передаем caption только для первого элемента
+            caption = caption_text if i == 0 else None
 
             if item["type"] in ("photo", "animation"):
                 media_list.append(InputMediaPhoto(media=file, caption=caption))
@@ -144,24 +212,46 @@ async def publish_post_to_channel(post_id: int) -> tuple[bool, str]:
                 media_list.append(InputMediaDocument(media=file, caption=caption))
 
         try:
+            sent_messages = []
+
             if not media_list:
-                sent = await bot.send_message(chat_id=target.telegram_id, text=final_text, reply_markup=reply_markup)
-            elif len(media_list) == 1:
-                if isinstance(media_list[0], InputMediaPhoto):
-                    sent = await bot.send_photo(chat_id=target.telegram_id, photo=media_list[0].media, caption=final_text, reply_markup=reply_markup)
-                else:
-                    sent = await bot.send_document(chat_id=target.telegram_id, document=media_list[0].media, caption=final_text, reply_markup=reply_markup)
+                text_parts = split_text_into_chunks(final_text, 4096)
+                if not text_parts:
+                    return False, "Пост пуст (нет ни текста, ни медиа)."
+                
+                for i, part in enumerate(text_parts):
+                    rm = reply_markup if i == len(text_parts) - 1 else None
+                    sent = await bot.send_message(chat_id=target.telegram_id, text=part, reply_markup=rm)
+                    sent_messages.append(sent)
             else:
-                sent = await bot.send_media_group(chat_id=target.telegram_id, media=media_list, reply_markup=reply_markup)
+                if len(media_list) == 1:
+                    if isinstance(media_list[0], InputMediaPhoto):
+                        sent = await bot.send_photo(chat_id=target.telegram_id, photo=media_list[0].media, caption=caption_text, reply_markup=reply_markup)
+                    else:
+                        sent = await bot.send_document(chat_id=target.telegram_id, document=media_list[0].media, caption=caption_text, reply_markup=reply_markup)
+                    sent_messages.append(sent)
+                else:
+                    sent = await bot.send_media_group(chat_id=target.telegram_id, media=media_list)
+                    if isinstance(sent, list):
+                        sent_messages.extend(sent)
+                    else:
+                        sent_messages.append(sent)
+                        
+                    if reply_markup:
+                        kb_msg = await bot.send_message(chat_id=target.telegram_id, text="👇", reply_markup=reply_markup, reply_to_message_id=sent_messages[0].message_id)
+                        sent_messages.append(kb_msg)
+                
+                if remaining_text:
+                    text_parts = split_text_into_chunks(remaining_text, 4096)
+                    for part in text_parts:
+                        reply_to_id = sent_messages[0].message_id if sent_messages else None
+                        sent_msg = await bot.send_message(chat_id=target.telegram_id, text=part, reply_to_message_id=reply_to_id)
+                        sent_messages.append(sent_msg)
 
             post.status = PostStatus.PUBLISHED
             post.published_at = datetime.now(timezone.utc)
             post.target_channel_id = target.id
-
-            if isinstance(sent, list):
-                post.published_message_id = sent[0].message_id
-            else:
-                post.published_message_id = sent.message_id
+            post.published_message_id = sent_messages[0].message_id if sent_messages else None
 
             await session.commit()
 
