@@ -8,6 +8,44 @@ content:
     type: file
     path: landing/data.json
     fields:
+      # --- НАСТРОЙКА ЦВЕТОВ ---
+      - name: bg_color
+        label: "🎨 Цвет фона сайта"
+        type: select
+        options:
+          values:
+            - name: "#0a0a0a"
+              label: "Темный (по умолчанию)"
+            - name: "#ffffff"
+              label: "Белый (светлая тема)"
+            - name: "#0f172a"
+              label: "Темно-синий (Navy)"
+            - name: "#1e1e1e"
+              label: "Серый (Графит)"
+      - name: title_color
+        label: "🎨 Цвет заголовка"
+        type: select
+        options:
+          values:
+            - name: "#ffffff"
+              label: "Белый (по умолчанию)"
+            - name: "#000000"
+              label: "Черный (для светлой темы)"
+            - name: "#3b82f6"
+              label: "Синий"
+      - name: subtitle_color
+        label: "🎨 Цвет подзаголовка"
+        type: select
+        options:
+          values:
+            - name: "#9ca3af"
+              label: "Серый (по умолчанию)"
+            - name: "#4b5563"
+              label: "Темно-серый (для светлой темы)"
+            - name: "#d1d5db"
+              label: "Светло-серый"
+
+      # --- НАСТРОЙКИ ЗАГОЛОВКА ---
       - name: hero_title
         label: "1. Заголовок (Текст)"
         type: string
@@ -45,6 +83,7 @@ content:
             - name: "font-mono"
               label: "Моноширинный (техно)"
 
+      # --- НАСТРОЙКИ ПОДЗАГОЛОВКА ---
       - name: hero_subtitle
         label: "2. Подзаголовок (Текст)"
         type: text
@@ -69,6 +108,7 @@ content:
             - name: "font-serif"
               label: "С засечками"
 
+      # --- ОСТАЛЬНЫЕ ПОЛЯ ---
       - name: hero_btn_text
         label: "3. Текст кнопки (Скачать)"
         type: string
