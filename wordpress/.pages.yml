@@ -8,6 +8,30 @@ content:
     type: file
     path: landing/data.json
     fields:
+      - name: font_family
+        label: "Шрифт сайта"
+        type: select
+        options:
+          values:
+            - name: inter
+              label: "Inter (современный)"
+            - name: arial
+              label: "Arial (классический)"
+            - name: georgia
+              label: "Georgia (с засечками)"
+            - name: verdana
+              label: "Verdana (широкий)"
+      - name: font_size
+        label: "Размер шрифта"
+        type: select
+        options:
+          values:
+            - name: small
+              label: "Маленький"
+            - name: medium
+              label: "Средний (по умолчанию)"
+            - name: large
+              label: "Большой"
       - name: hero_title
         label: "Главный заголовок"
         type: string

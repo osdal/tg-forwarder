@@ -9,16 +9,71 @@ content:
     path: landing/data.json
     fields:
       - name: hero_title
-        label: "Главный заголовок"
+        label: "1. Заголовок (Текст)"
         type: string
+      - name: hero_title_size
+        label: "1. Заголовок (Размер)"
+        type: select
+        options:
+          values:
+            - name: "text-4xl md:text-5xl"
+              label: "Средний"
+            - name: "text-5xl md:text-7xl"
+              label: "Большой (по умолчанию)"
+            - name: "text-6xl md:text-8xl"
+              label: "Огромный"
+      - name: hero_title_weight
+        label: "1. Заголовок (Жирность)"
+        type: select
+        options:
+          values:
+            - name: "font-normal"
+              label: "Обычный"
+            - name: "font-bold"
+              label: "Жирный"
+            - name: "font-extrabold"
+              label: "Очень жирный (по умолчанию)"
+      - name: hero_title_font
+        label: "1. Заголовок (Шрифт)"
+        type: select
+        options:
+          values:
+            - name: "font-sans"
+              label: "Без засечек (по умолчанию)"
+            - name: "font-serif"
+              label: "С засечками (классика)"
+            - name: "font-mono"
+              label: "Моноширинный (техно)"
+
       - name: hero_subtitle
-        label: "Подзаголовок (описание)"
+        label: "2. Подзаголовок (Текст)"
         type: text
+      - name: hero_subtitle_size
+        label: "2. Подзаголовок (Размер)"
+        type: select
+        options:
+          values:
+            - name: "text-lg"
+              label: "Маленький"
+            - name: "text-xl"
+              label: "Средний (по умолчанию)"
+            - name: "text-2xl"
+              label: "Большой"
+      - name: hero_subtitle_font
+        label: "2. Подзаголовок (Шрифт)"
+        type: select
+        options:
+          values:
+            - name: "font-sans"
+              label: "Без засечек"
+            - name: "font-serif"
+              label: "С засечками"
+
       - name: hero_btn_text
-        label: "Текст кнопки (Скачать)"
+        label: "3. Текст кнопки (Скачать)"
         type: string
       - name: features
-        label: "Блоки с возможностями"
+        label: "4. Блоки с возможностями"
         type: object
         list: true
         fields:

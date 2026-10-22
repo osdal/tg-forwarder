@@ -5,15 +5,19 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>TG Forwarder — Студия контента для Telegram</title>
     <script src="https://cdn.tailwindcss.com"></script>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;800&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;800&family=Merriweather:wght@400;700&family=Fira+Code:wght@400;700&display=swap" rel="stylesheet">
     <style>
-        body { font-family: 'Inter', sans-serif; background-color: #0a0a0a; color: #ffffff; }
+        body { background-color: #0a0a0a; color: #ffffff; }
         .gradient-text { background: linear-gradient(to right, #3b82f6, #8b5cf6, #ec4899); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
         .glass { background: rgba(255, 255, 255, 0.05); backdrop-filter: blur(10px); border: 1px solid rgba(255, 255, 255, 0.1); }
-        .glow { box-shadow: 0 0 50px -12px rgba(59, 130, 246, 0.5); }
+        
+        /* Переопределяем стандартные шрифты Tailwind нашими красивыми */
+        .font-serif { font-family: 'Merriweather', serif !important; }
+        .font-mono { font-family: 'Fira Code', monospace !important; }
+        .font-sans { font-family: 'Inter', sans-serif !important; }
     </style>
 </head>
-<body class="antialiased">
+<body class="antialiased font-sans">
 
     <!-- Navbar -->
     <nav class="fixed w-full z-50 glass border-b border-white/10">
@@ -44,12 +48,10 @@
                 <span class="flex h-2 w-2 rounded-full bg-blue-500 animate-pulse"></span>
                 Версия 1.0 уже доступна
             </div>
-            <h1 class="text-5xl md:text-7xl font-extrabold tracking-tight mb-6 leading-tight" id="hero-title">
-                Автоматизируй свой <br> <span class="gradient-text">Telegram-канал</span>
-            </h1>
-            <p class="text-xl text-gray-400 mb-10 max-w-2xl mx-auto" id="hero-subtitle">
-                Собирай посты из других каналов, редактируй их с помощью ИИ...
-            </p>
+            <!-- Заголовок и подзаголовок заполняются скриптом -->
+            <h1 id="hero-title" class="tracking-tight mb-6 leading-tight"></h1>
+            <p id="hero-subtitle" class="text-gray-400 mb-10 max-w-2xl mx-auto"></p>
+            
             <div class="flex flex-col sm:flex-row gap-4 justify-center">
                 <a href="https://github.com/osdal/tg-forwarder" target="_blank" class="bg-white text-black px-8 py-4 rounded-xl font-bold text-lg hover:bg-gray-200 transition flex items-center justify-center gap-2">
                     <svg class="w-5 h-5" fill="currentColor" viewBox="0 0 24 24"><path fill-rule="evenodd" d="M12 2C6.477 2 2 6.484 2 12.017c0 4.425 2.865 8.18 6.839 9.504.5.092.682-.217.682-.483 0-.237-.008-.868-.013-1.703-2.782.605-3.369-1.343-3.369-1.343-.454-1.158-1.11-1.466-1.11-1.466-.908-.62.069-.608.069-.608 1.003.07 1.531 1.032 1.531 1.032.892 1.53 2.341 1.088 2.91.832.092-.647.35-1.088.636-1.338-2.22-.253-4.555-1.113-4.555-4.951 0-1.093.39-1.988 1.029-2.688-.103-.253-.446-1.272.098-2.65 0 0 .84-.27 2.75 1.026A9.564 9.564 0 0112 6.844c.85.004 1.705.115 2.504.337 1.909-1.296 2.747-1.027 2.747-1.027.546 1.379.202 2.398.1 2.651.64.7 1.028 1.595 1.028 2.688 0 3.848-2.339 4.695-4.566 4.943.359.309.678.92.678 1.855 0 1.338-.012 2.419-.012 2.747 0 .268.18.58.688.482A10.019 10.019 0 0022 12.017C22 6.484 17.522 2 12 2z" clip-rule="evenodd"></path></svg>
@@ -66,7 +68,6 @@
                 <h2 class="text-3xl md:text-4xl font-bold mb-4">Всё, что нужно для роста канала</h2>
                 <p class="text-gray-400 text-lg">Перестань тратить часы на рутину. Доверь это автоматизации.</p>
             </div>
-            <!-- Блоки будут вставлены скриптом -->
             <div id="features-grid" class="grid grid-cols-1 md:grid-cols-3 gap-8">
             </div>
         </div>
@@ -93,16 +94,33 @@
     <script>
         document.addEventListener('DOMContentLoaded', async () => {
             try {
-                const response = await fetch('/tg-forwarder/data.json'); // Путь к data.json
+                const response = await fetch('/tg-forwarder/data.json');
                 if (!response.ok) throw new Error('Ошибка загрузки данных');
                 const data = await response.json();
 
-                // Подставляем заголовок и описание
-                if (data.hero_title) document.getElementById('hero-title').innerHTML = data.hero_title.replace('Telegram-канал', '<span class="gradient-text">Telegram-канал</span>');
-                if (data.hero_subtitle) document.getElementById('hero-subtitle').textContent = data.hero_subtitle;
+                // --- НАСТРОЙКА ЗАГОЛОВКА ---
+                const titleEl = document.getElementById('hero-title');
+                if (data.hero_title) {
+                    // innerHTML позволяет использовать <br> и <span class="gradient-text">
+                    titleEl.innerHTML = data.hero_title; 
+                }
+                // Применяем классы размера, жирности и шрифта
+                if (data.hero_title_size) titleEl.classList.add(...data.hero_title_size.split(' '));
+                if (data.hero_title_weight) titleEl.classList.add(data.hero_title_weight);
+                if (data.hero_title_font) titleEl.classList.add(data.hero_title_font);
+
+                // --- НАСТРОЙКА ПОДЗАГОЛОВКА ---
+                const subTitleEl = document.getElementById('hero-subtitle');
+                if (data.hero_subtitle) {
+                    subTitleEl.textContent = data.hero_subtitle;
+                }
+                if (data.hero_subtitle_size) subTitleEl.classList.add(data.hero_subtitle_size);
+                if (data.hero_subtitle_font) subTitleEl.classList.add(data.hero_subtitle_font);
+
+                // --- КНОПКА ---
                 if (data.hero_btn_text) document.getElementById('hero-btn-text').textContent = data.hero_btn_text;
 
-                // Генерируем блоки возможностей
+                // --- БЛОКИ ВОЗМОЖНОСТЕЙ ---
                 const grid = document.getElementById('features-grid');
                 if (data.features && data.features.length > 0) {
                     grid.innerHTML = data.features.map(f => `
