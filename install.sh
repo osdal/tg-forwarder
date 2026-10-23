@@ -4,7 +4,6 @@ echo -e "\033[0;36m=============================================\033[0m"
 echo -e "\033[0;36m  Установка TG Forwarder\033[0m"
 echo -e "\033[0;36m=============================================\033[0m"
 
-# 1. Проверка Docker
 if ! command -v docker &> /dev/null; then
     echo -e "\033[0;31m❌ ОШИБКА: Docker не установлен!\033[0m"
     echo -e "\033[0;33mУстановите Docker: https://docs.docker.com/engine/install/\033[0m"
@@ -18,19 +17,22 @@ fi
 
 echo -e "\033[0;32m✅ Docker найден и работает.\033[0m"
 
-# 2. Сбор данных
 echo -e "\n\033[0;36mВведите данные вашего Telegram-бота и аккаунта:\033[0m"
 read -p "API_ID (из my.telegram.org): " API_ID
 read -p "API_HASH (из my.telegram.org): " API_HASH
 read -p "BOT_TOKEN (от @BotFather): " BOT_TOKEN
 read -p "ADMIN_TELEGRAM_ID (узнать у @userinfobot): " ADMIN_ID
+read -p "LICENSE_KEY (лицензионный ключ от разработчика): " LICENSE_KEY
 
-# 3. Генерация паролей
+if [ -z "$LICENSE_KEY" ]; then
+    echo -e "\033[0;31m❌ ОШИБКА: Без лицензионного ключа установка невозможна!\033[0m"
+    exit 1
+fi
+
 POSTGRES_PASS=$(openssl rand -hex 16)
 JWT_SECRET=$(openssl rand -hex 32)
 MINIO_PASS=$(openssl rand -hex 16)
 
-# 4. Создание .env
 echo -e "\n\033[0;36mСоздаем файл конфигурации .env...\033[0m"
 cat > .env <<EOL
 # ============ Telegram ============
@@ -60,15 +62,16 @@ BOT_USERNAME=tel_forw_bot
 
 # ============ AI ============
 GEMINI_API_KEY=
+
+# ============ License ============
+LICENSE_KEY=${LICENSE_KEY}
 EOL
 
 echo -e "\033[0;32m✅ Файл .env создан!\033[0m"
 
-# 5. Запуск
 echo -e "\n\033[0;36mЗапускаем сборку и старт контейнеров (5-10 минут)...\033[0m"
 docker compose up -d --build
 
-# 6. Инструкция
 echo -e "\n\033[0;36m=============================================\033[0m"
 echo -e "\033[0;32m✅ УСТАНОВКА ЗАВЕРШЕНА!\033[0m"
 echo -e "\033[0;36m=============================================\033[0m"
