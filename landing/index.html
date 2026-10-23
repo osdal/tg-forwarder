@@ -26,10 +26,9 @@
                     <span class="text-2xl">📨</span>
                     <span class="font-bold text-xl tracking-tight" id="nav-logo" style="color: #ffffff;">TG Forwarder</span>
                 </div>
+                <!-- Меню будет заполнено скриптом -->
                 <div class="hidden md:block">
-                    <div class="ml-10 flex items-baseline space-x-8">
-                        <a href="#features" class="hover:text-blue-400 transition">Возможности</a>
-                        <a href="#pricing" class="hover:text-blue-400 transition">Цены</a>
+                    <div id="nav-links" class="ml-10 flex items-baseline space-x-8">
                     </div>
                 </div>
                 <div>
@@ -70,6 +69,16 @@
         </div>
     </section>
 
+    <!-- FAQ Section -->
+    <section id="faq" class="py-24 bg-[#0a0a0a]">
+        <div class="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div class="text-center mb-12">
+                <h2 class="text-3xl md:text-4xl font-bold mb-4" id="faq-title" style="color: #ffffff;">Часто задаваемые вопросы</h2>
+            </div>
+            <div id="faq-list" class="space-y-4"></div>
+        </div>
+    </section>
+
     <!-- CTA Section -->
     <section class="py-24 relative overflow-hidden">
         <div class="absolute inset-0 bg-gradient-to-r from-blue-600/20 to-purple-600/20"></div>
@@ -95,19 +104,25 @@
                 if (!response.ok) throw new Error('Ошибка загрузки данных');
                 const data = await response.json();
 
+                // --- ОТРИСОВКА МЕНЮ ---
+                const navLinks = document.getElementById('nav-links');
+                if (data.nav_links && data.nav_links.length > 0) {
+                    navLinks.innerHTML = data.nav_links.map(link => `
+                        <a href="${link.url}" class="hover:text-blue-400 transition">${link.name}</a>
+                    `).join('');
+                }
+
                 // --- ПРИМЕНЕНИЕ ЦВЕТОВ ---
                 const body = document.body;
                 if (data.bg_color) body.style.backgroundColor = data.bg_color;
 
-                // Заголовки
                 if (data.hero_title_color) document.getElementById('hero-title').style.color = data.hero_title_color;
                 if (data.hero_title_color) document.getElementById('nav-logo').style.color = data.hero_title_color;
                 if (data.features_title_color) {
                     document.getElementById('features-title').style.color = data.features_title_color;
                     document.getElementById('cta-title').style.color = data.features_title_color;
+                    document.getElementById('faq-title').style.color = data.features_title_color;
                 }
-
-                // Описания
                 if (data.hero_subtitle_color) document.getElementById('hero-subtitle').style.color = data.hero_subtitle_color;
                 if (data.features_subtitle_color) {
                     document.getElementById('features-subtitle').style.color = data.features_subtitle_color;
@@ -115,14 +130,14 @@
                     document.getElementById('footer-text').style.color = data.features_subtitle_color;
                 }
 
-                // --- НАСТРОЙКА ЗАГОЛОВКА (Размер, Шрифт) ---
+                // --- ЗАГОЛОВОК ---
                 const titleEl = document.getElementById('hero-title');
                 if (data.hero_title) titleEl.innerHTML = data.hero_title; 
                 if (data.hero_title_size) titleEl.classList.add(...data.hero_title_size.split(' '));
                 if (data.hero_title_weight) titleEl.classList.add(data.hero_title_weight);
                 if (data.hero_title_font) titleEl.classList.add(data.hero_title_font);
 
-                // --- НАСТРОЙКА ПОДЗАГОЛОВКА (Размер, Шрифт) ---
+                // --- ПОДЗАГОЛОВОК ---
                 const subTitleEl = document.getElementById('hero-subtitle');
                 if (data.hero_subtitle) subTitleEl.textContent = data.hero_subtitle;
                 if (data.hero_subtitle_size) subTitleEl.classList.add(data.hero_subtitle_size);
@@ -139,6 +154,18 @@
                             <div class="w-12 h-12 bg-blue-500/20 rounded-lg flex items-center justify-center text-2xl mb-6">${f.icon}</div>
                             <h3 class="text-xl font-bold mb-3" style="color: ${data.card_title_color || '#ffffff'}">${f.title}</h3>
                             <p style="color: ${data.card_desc_color || '#9ca3af'}">${f.description}</p>
+                        </div>
+                    `).join('');
+                }
+
+                // --- ОТРИСОВКА FAQ ---
+                if (data.faq_title) document.getElementById('faq-title').textContent = data.faq_title;
+                const faqList = document.getElementById('faq-list');
+                if (data.faq_items && data.faq_items.length > 0) {
+                    faqList.innerHTML = data.faq_items.map(item => `
+                        <div class="glass p-6 rounded-xl">
+                            <h3 class="text-lg font-bold mb-2" style="color: ${data.card_title_color || '#ffffff'}">${item.question}</h3>
+                            <p style="color: ${data.card_desc_color || '#9ca3af'}">${item.answer}</p>
                         </div>
                     `).join('');
                 }

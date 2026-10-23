@@ -8,6 +8,15 @@ content:
     type: file
     path: landing/data.json
     fields:
+      # --- МЕНЮ ---
+      - name: nav_links
+        label: "🔗 Ссылки в верхнем меню"
+        type: object
+        list: true
+        fields:
+          - { name: name, label: "Название (текст ссылки)", type: string }
+          - { name: url, label: "Ссылка (например, #faq или #features)", type: string }
+
       # --- ФОН ---
       - name: bg_color
         label: "🎨 Цвет фона сайта"
@@ -113,7 +122,7 @@ content:
             - { name: "#4b5563", label: "Темно-серый" }
 
       - name: features
-        label: "8. Блоки с возможностями (Список)"
+        label: "8. Блоки с возможностями"
         type: object
         list: true
         fields:
@@ -121,12 +130,12 @@ content:
           - { name: title, label: "Заголовок", type: string }
           - { name: description, label: "Описание", type: text }
 
-      # --- НОВАЯ СЕКЦИЯ FAQ ---
+      # --- СЕКЦИЯ FAQ ---
       - name: faq_title
         label: "9. Заголовок секции FAQ"
         type: string
       - name: faq_items
-        label: "10. Вопросы и ответы (Список)"
+        label: "10. Вопросы и ответы"
         type: object
         list: true
         fields:

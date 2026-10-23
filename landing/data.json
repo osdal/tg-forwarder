@@ -1,4 +1,10 @@
 {
+  "nav_links": [
+    { "name": "Возможности", "url": "#features" },
+    { "name": "FAQ", "url": "#faq" },
+    { "name": "Цены", "url": "#pricing" }
+  ],
+
   "bg_color": "#0a0a0a",
   "hero_title_color": "#ffffff",
   "hero_subtitle_color": "#9ca3af",
