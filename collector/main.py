@@ -14,7 +14,7 @@ from shared.db import SessionLocal
 from shared.models import Post, PostMedia, PostStatus, Source, AppSettings, PostTemplate
 from shared.storage import save_telethon_media
 from shared.telegram_utils import detect_media_type_from_telethon
-from shared.publisher import publish_post_to_channel # ИМПОРТ ПУБЛИКАТОРА
+from shared.publisher import publish_post_to_channel
 
 # ============ Логирование ============
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(name)s: %(message)s")
@@ -33,17 +33,16 @@ def build_client() -> TelegramClient:
 
 # ============ HEARTBEAT ============
 async def heartbeat() -> None:
-    settings = get_settings()
     while True:
         try:
+            naive_now = datetime.now(timezone.utc).replace(tzinfo=None)
             async with SessionLocal() as session:
                 stmt = pg_insert(AppSettings).values(
                     id=1, 
-                    admin_telegram_id=settings.admin_telegram_id,
-                    collector_last_seen=datetime.now(timezone.utc)
+                    collector_last_seen=naive_now
                 ).on_conflict_do_update(
                     index_elements=[AppSettings.id],
-                    set_={"collector_last_seen": datetime.now(timezone.utc)}
+                    set_={"collector_last_seen": naive_now}
                 )
                 await session.execute(stmt)
                 await session.commit()

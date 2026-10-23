@@ -13,9 +13,11 @@ function App() {
   const [folders, setFolders] = useState([])
   const [metrics, setMetrics] = useState(null)
   const [sources, setSources] = useState([])
+  const [licenses, setLicenses] = useState([])
   const [loading, setLoading] = useState(true)
   
   const [status, setStatus] = useState({ bot_online: false, collector_online: false })
+  const [license, setLicense] = useState(null)
   
   const [queueSourceFilter, setQueueSourceFilter] = useState('all')
 
@@ -64,11 +66,18 @@ function App() {
   const [newSourceInput, setNewSourceInput] = useState("")
   const [addingSource, setAddingSource] = useState(false)
 
+  // Стейты для формы создания лицензии
+  const [newLicClient, setNewLicClient] = useState("")
+  const [newLicPlan, setNewLicPlan] = useState("pro")
+  const [newLicDays, setNewLicDays] = useState(365)
+  const [generatingLic, setGeneratingLic] = useState(false)
+
   const fetchWithAuth = async (url, options = {}) => {
     const headers = { ...options.headers, 'Authorization': `Bearer ${token}` }
     const res = await fetch(url, { ...options, headers })
     if (res.status === 401 || res.status === 403) {
-      localStorage.removeItem('token'); setToken(null); throw new Error("Unauthorized")
+      if (res.status === 401) { localStorage.removeItem('token'); setToken(null); }
+      throw new Error("Unauthorized or Forbidden")
     }
     return res
   }
@@ -76,18 +85,26 @@ function App() {
   const fetchData = async () => {
     if (!token) return
     try {
-      const [postsRes, trashRes, libRes, tplRes, foldRes, metRes, srcRes] = await Promise.all([
+      const [postsRes, trashRes, libRes, tplRes, foldRes, metRes, srcRes, licInfoRes] = await Promise.all([
         fetchWithAuth('/api/posts?trash=false'),
         fetchWithAuth('/api/posts?trash=true'),
         fetchWithAuth('/api/media-library'),
         fetchWithAuth('/api/templates'),
         fetchWithAuth('/api/template-folders'),
         fetchWithAuth('/api/metrics'),
-        fetchWithAuth('/api/sources')
+        fetchWithAuth('/api/sources'),
+        fetchWithAuth('/api/license/info')
       ])
       setPosts(await postsRes.json()); setTrashPosts(await trashRes.json());
       setMediaLib(await libRes.json()); setTemplates(await tplRes.json()); 
-      setFolders(await foldRes.json()); setMetrics(await metRes.json()); setSources(await srcRes.json())
+      setFolders(await foldRes.json()); setMetrics(await metRes.json()); setSources(await srcRes.json());
+      const licData = await licInfoRes.json();
+      setLicense(licData);
+
+      if (licData.plan === 'owner') {
+        const licListRes = await fetchWithAuth('/api/admin/licenses');
+        setLicenses(await licListRes.json());
+      }
     } catch (err) { console.error(err) } finally { setLoading(false) }
   }
 
@@ -112,13 +129,13 @@ function App() {
   }, [token])
 
   useEffect(() => {
-    if (token) {
+    if (token && license?.limits?.image_gen_enabled) {
       fetchWithAuth('/api/ai/image-models')
         .then(r => r.json())
         .then(d => { if (d.models?.length) setImageModels(d.models); })
         .catch(() => {});
     }
-  }, [token]);
+  }, [token, license]);
 
   useEffect(() => {
     window.onTelegramAuth = async (user) => {
@@ -146,22 +163,52 @@ function App() {
     } catch (err) { alert("Ошибка сети") }
   }
 
+  // --- УПРАВЛЕНИЕ ЛИЦЕНЗИЯМИ ---
+  const handleCreateLicense = async (e) => {
+    e.preventDefault();
+    if (!newLicClient.trim()) return alert("Введите имя клиента");
+    setGeneratingLic(true);
+    try {
+      const res = await fetchWithAuth('/api/admin/licenses', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ client_name: newLicClient, plan: newLicPlan, days: parseInt(newLicDays) })
+      });
+      if (res.ok) {
+        alert("✅ Лицензия создана!");
+        setNewLicClient("");
+        fetchData();
+      } else {
+        const err = await res.json();
+        alert(`Ошибка: ${err.detail}`);
+      }
+    } finally { setGeneratingLic(false); }
+  }
+
+  const handleToggleLicense = async (id) => {
+    await fetchWithAuth(`/api/admin/licenses/${id}/toggle`, { method: 'PATCH' });
+    fetchData();
+  }
+
+  const handleDeleteLicense = async (id) => {
+    if (!window.confirm("Удалить запись о лицензии?")) return;
+    await fetchWithAuth(`/api/admin/licenses/${id}`, { method: 'DELETE' });
+    fetchData();
+  }
+
+  const copyToClipboard = (text) => {
+    navigator.clipboard.writeText(text);
+    alert("Лицензия скопирована в буфер обмена!");
+  }
+
+  // --- ОСТАЛЬНЫЕ ФУНКЦИИ ---
   const handleClearChannel = async () => {
     if (!window.confirm("ВНИМАНИЕ! Это удалит ВСЕ сообщения из целевого Telegram-канала. Продолжить?")) return;
     setClearing(true);
     try {
       const res = await fetchWithAuth('/api/target-channel/clear', { method: 'POST' });
-      if (res.ok) {
-        const data = await res.json();
-        alert(`✅ ${data.message}`);
-      } else {
-        alert(`❌ Ошибка: ${(await res.json()).detail}`);
-      }
-    } catch (err) {
-      alert("Ошибка сети");
-    } finally {
-      setClearing(false);
-    }
+      if (res.ok) alert(`✅ ${(await res.json()).message}`);
+      else alert(`❌ Ошибка: ${(await res.json()).detail}`);
+    } catch (err) { alert("Ошибка сети"); } finally { setClearing(false); }
   }
 
   const handleAction = async (postId, action) => {
@@ -181,18 +228,13 @@ function App() {
     try {
       const res = await fetchWithAuth(`/api/posts/${postId}/refetch`, { method: 'POST' });
       if (res.ok) {
-        const data = await res.json();
+        alert(`✅ ${(await res.json()).message}`);
         setCacheBuster(Date.now());
-        alert(`✅ ${data.message}`);
         const single = await fetchWithAuth(`/api/posts/${postId}`).then(r => r.json());
         setEditingPost(single);
         fetchData();
-      } else {
-        const err = await res.json();
-        alert(`❌ Ошибка: ${err.detail}`);
-      }
-    } catch (err) { alert("Ошибка сети"); }
-    finally { setRefetching(false); }
+      } else alert(`❌ Ошибка: ${(await res.json()).detail}`);
+    } catch (err) { alert("Ошибка сети"); } finally { setRefetching(false); }
   }
 
   const handleCreateManualPost = async () => {
@@ -202,16 +244,9 @@ function App() {
         const data = await res.json();
         const newPost = await fetchWithAuth(`/api/posts/${data.id}`).then(r => r.json());
         setEditingPost(newPost);
-        setEditText("");
-        setPostButtons([]);
-        setAiPrompt("");
-        setImagePrompt("");
-        setLastGeneratedMediaId(null);
+        setEditText(""); setPostButtons([]); setAiPrompt(""); setImagePrompt(""); setLastGeneratedMediaId(null);
         fetchData();
-      } else {
-        const err = await res.json();
-        alert(`Ошибка создания поста: ${err.detail || "Неизвестная ошибка"}`);
-      }
+      } else alert(`Ошибка: ${(await res.json()).detail}`);
     } catch (err) { alert("Ошибка сети"); }
   }
 
@@ -230,6 +265,7 @@ function App() {
     try {
       const res = await fetchWithAuth('/api/ai/translate', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ text: editText }) })
       if (res.ok) setEditText((await res.json()).result)
+      else alert((await res.json()).detail)
     } finally { setAiLoading(false) }
   }
 
@@ -238,6 +274,7 @@ function App() {
     try {
       const res = await fetchWithAuth('/api/ai/rewrite', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ text: editText, word_count: wordCount ? parseInt(wordCount) : null }) })
       if (res.ok) setEditText((await res.json()).result)
+      else alert((await res.json()).detail)
     } finally { setAiLoading(false) }
   }
 
@@ -254,22 +291,12 @@ function App() {
     setAiGenerating(true);
     try {
       const res = await fetchWithAuth('/api/ai/generate', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ prompt: aiPrompt, base_text: editText })
       });
-      if (res.ok) {
-        const data = await res.json();
-        setEditText(data.result);
-      } else {
-        const err = await res.json();
-        alert(`Ошибка ИИ: ${err.detail}`);
-      }
-    } catch (err) {
-      alert("Ошибка сети");
-    } finally {
-      setAiGenerating(false);
-    }
+      if (res.ok) setEditText((await res.json()).result);
+      else alert(`Ошибка ИИ: ${(await res.json()).detail}`);
+    } catch (err) { alert("Ошибка сети"); } finally { setAiGenerating(false); }
   }
 
   const handleGenerateImage = async (overridePrompt = null, replaceMediaId = null) => {
@@ -278,23 +305,9 @@ function App() {
     if (!editingPost?.id) return alert("Сначала открой пост.");
     setImageGenerating(true);
     try {
-      if (replaceMediaId) {
-        try { await fetchWithAuth(`/api/media/${replaceMediaId}`, { method: 'DELETE' }); }
-        catch (e) { console.warn("Не удалось удалить старое медиа:", e); }
-      }
-      const body = {
-        prompt: promptToUse,
-        post_id: editingPost.id,
-        width: parseInt(imageWidth),
-        height: parseInt(imageHeight),
-        model: imageModel,
-        seed: imageSeed ? parseInt(imageSeed) : null,
-      };
-      const res = await fetchWithAuth('/api/ai/generate-image', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body)
-      });
+      if (replaceMediaId) { try { await fetchWithAuth(`/api/media/${replaceMediaId}`, { method: 'DELETE' }); } catch (e) {} }
+      const body = { prompt: promptToUse, post_id: editingPost.id, width: parseInt(imageWidth), height: parseInt(imageHeight), model: imageModel, seed: imageSeed ? parseInt(imageSeed) : null };
+      const res = await fetchWithAuth('/api/ai/generate-image', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
       if (res.ok) {
         const data = await res.json();
         setCacheBuster(Date.now());
@@ -303,15 +316,8 @@ function App() {
         setEditingPost(updated);
         if (!overridePrompt) setImagePrompt("");
         fetchData();
-      } else {
-        const err = await res.json();
-        alert(`Ошибка генерации: ${err.detail}`);
-      }
-    } catch (err) {
-      alert("Ошибка сети");
-    } finally {
-      setImageGenerating(false);
-    }
+      } else alert(`Ошибка генерации: ${(await res.json()).detail}`);
+    } catch (err) { alert("Ошибка сети"); } finally { setImageGenerating(false); }
   }
 
   const handleGenerateLibraryImage = async () => {
@@ -319,30 +325,12 @@ function App() {
     setLibImageGenerating(true);
     try {
       const res = await fetchWithAuth('/api/ai/generate-image', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          prompt: libImagePrompt,
-          width: parseInt(imageWidth),
-          height: parseInt(imageHeight),
-          model: imageModel,
-          seed: imageSeed ? parseInt(imageSeed) : null,
-        })
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ prompt: libImagePrompt, width: parseInt(imageWidth), height: parseInt(imageHeight), model: imageModel, seed: imageSeed ? parseInt(imageSeed) : null })
       });
-      if (res.ok) {
-        setCacheBuster(Date.now());
-        setLibImagePrompt("");
-        alert("✅ Картинка сохранена в медиа-библиотеку!");
-        fetchData();
-      } else {
-        const err = await res.json();
-        alert(`Ошибка генерации: ${err.detail}`);
-      }
-    } catch (err) {
-      alert("Ошибка сети");
-    } finally {
-      setLibImageGenerating(false);
-    }
+      if (res.ok) { setCacheBuster(Date.now()); setLibImagePrompt(""); alert("✅ Картинка сохранена!"); fetchData(); }
+      else alert(`Ошибка генерации: ${(await res.json()).detail}`);
+    } catch (err) { alert("Ошибка сети"); } finally { setLibImageGenerating(false); }
   }
 
   const handleUploadMedia = async (e) => {
@@ -367,9 +355,9 @@ function App() {
   const handleSaveToLib = async (mediaId) => {
     try {
       const res = await fetchWithAuth(`/api/posts/${editingPost.id}/media/save-to-library/${mediaId}`, { method: 'POST' })
-      if (res.ok) { fetchData(); alert("✅ Медиа сохранено в библиотеку!") }
-      else { alert(`❌ Ошибка: ${(await res.json()).detail || "Не удалось сохранить"}`) }
-    } catch (err) { alert("Ошибка сети при сохранении") }
+      if (res.ok) { fetchData(); alert("✅ Медиа сохранено!") }
+      else alert(`❌ Ошибка: ${(await res.json()).detail}`)
+    } catch (err) { alert("Ошибка сети") }
   }
 
   const handleAttachFromLib = async (libId) => {
@@ -385,15 +373,13 @@ function App() {
     setLibUploading(true); const formData = new FormData(); formData.append('file', file)
     try {
       await fetchWithAuth('/api/media-library/upload', { method: 'POST', body: formData })
-      setCacheBuster(Date.now());
-      fetchData()
+      setCacheBuster(Date.now()); fetchData()
     } finally { setLibUploading(false); e.target.value = null }
   }
 
   const handleDeleteFromLib = async (libId) => {
-    if (!window.confirm("Удалить файл из библиотеки навсегда?")) return
-    await fetchWithAuth(`/api/media-library/${libId}`, { method: 'DELETE' })
-    fetchData()
+    if (!window.confirm("Удалить файл навсегда?")) return
+    await fetchWithAuth(`/api/media-library/${libId}`, { method: 'DELETE' }); fetchData()
   }
 
   const handleDownload = async (key, type) => {
@@ -406,30 +392,16 @@ function App() {
       a.href = url;
       const ext = key.split('.').pop() || (type === 'video' ? 'mp4' : 'jpg');
       a.download = `media_${Date.now()}.${ext}`;
-      document.body.appendChild(a);
-      a.click();
-      a.remove();
+      document.body.appendChild(a); a.click(); a.remove();
       window.URL.revokeObjectURL(url);
-    } catch (err) {
-      alert("Не удалось скачать файл: " + err.message);
-    }
+    } catch (err) { alert("Не удалось скачать файл"); }
   }
 
   const handleAttachTemplate = async () => {
     if (!selectedTemplate) return
-    const res = await fetchWithAuth(`/api/posts/${editingPost.id}/templates`, { 
-      method: 'POST', 
-      headers: { 'Content-Type': 'application/json' }, 
-      body: JSON.stringify({ template_id: parseInt(selectedTemplate), mode: attachMode }) 
-    })
-    if (!res.ok) {
-      const err = await res.json()
-      return alert(`Ошибка прикрепления: ${err.detail}`)
-    }
-    const updatedRes = await fetchWithAuth(`/api/posts/${editingPost.id}`)
-    if (!updatedRes.ok) return alert("Ошибка обновления данных")
-    
-    const updated = await updatedRes.json()
+    const res = await fetchWithAuth(`/api/posts/${editingPost.id}/templates`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ template_id: parseInt(selectedTemplate), mode: attachMode }) })
+    if (!res.ok) return alert(`Ошибка: ${(await res.json()).detail}`)
+    const updated = await fetchWithAuth(`/api/posts/${editingPost.id}`).then(r => r.json())
     setEditingPost(updated); fetchData(); setSelectedTemplate("")
   }
 
@@ -454,18 +426,12 @@ function App() {
   }
 
   const handleToggleAutoPublish = async (source, checked) => {
-    await fetchWithAuth(`/api/sources/${source.id}/auto-publish`, {
-      method: 'PATCH', headers: { 'Content-Type': 'application/json' }, 
-      body: JSON.stringify({ auto_publish: checked, auto_template_id: checked ? source.auto_template_id : null })
-    })
+    await fetchWithAuth(`/api/sources/${source.id}/auto-publish`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ auto_publish: checked, auto_template_id: checked ? source.auto_template_id : null }) })
     fetchData()
   }
 
   const handleSetAutoTemplate = async (source, templateId) => {
-    await fetchWithAuth(`/api/sources/${source.id}/auto-publish`, {
-      method: 'PATCH', headers: { 'Content-Type': 'application/json' }, 
-      body: JSON.stringify({ auto_publish: source.auto_publish, auto_template_id: templateId ? parseInt(templateId) : null })
-    })
+    await fetchWithAuth(`/api/sources/${source.id}/auto-publish`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ auto_publish: source.auto_publish, auto_template_id: templateId ? parseInt(templateId) : null }) })
     fetchData()
   }
 
@@ -534,7 +500,7 @@ function App() {
     setAddingSource(true)
     try {
       const res = await fetchWithAuth('/api/sources', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ channel_input: newSourceInput }) })
-      if (res.ok) { setNewSourceInput(""); fetchData() } else { alert(`Ошибка: ${(await res.json()).detail}`) }
+      if (res.ok) { setNewSourceInput(""); fetchData() } else alert(`Ошибка: ${(await res.json()).detail}`)
     } finally { setAddingSource(false) }
   }
 
@@ -546,6 +512,12 @@ function App() {
   
   const getMediaUrl = (key) => `/media/${key}?v=${cacheBuster}`
   const getStatusColor = (status) => ({ new: 'bg-blue-100 text-blue-800', published: 'bg-green-100 text-green-800', scheduled: 'bg-yellow-100 text-yellow-800', deleted: 'bg-red-100 text-red-800' }[status] || 'bg-gray-100')
+
+  const isOwner = license?.plan === 'owner'
+  const aiEnabled = license?.limits?.ai_enabled ?? true
+  const imgEnabled = license?.limits?.image_gen_enabled ?? true
+  const maxSources = license?.limits?.max_sources ?? 5
+  const sourcesLimitReached = maxSources !== -1 && sources.length >= maxSources
 
   if (!token) {
     return (
@@ -583,9 +555,16 @@ function App() {
             <button onClick={() => setActiveTab('sources')} className={`text-xl font-bold ${activeTab === 'sources' ? 'text-blue-600' : 'text-gray-400'}`}>Источники</button>
             <button onClick={() => setActiveTab('templates')} className={`text-xl font-bold ${activeTab === 'templates' ? 'text-blue-600' : 'text-gray-400'}`}>Шаблоны</button>
             <button onClick={() => setActiveTab('metrics')} className={`text-xl font-bold ${activeTab === 'metrics' ? 'text-blue-600' : 'text-gray-400'}`}>Метрики</button>
+            {isOwner && <button onClick={() => setActiveTab('licenses')} className={`text-xl font-bold ${activeTab === 'licenses' ? 'text-purple-600' : 'text-gray-400'}`}>Лицензии</button>}
           </div>
           
           <div className="flex gap-4 border-l pl-6 text-sm font-medium items-center">
+            {license && (
+              <div className="flex items-center gap-2 bg-indigo-50 px-2 py-1 rounded border border-indigo-200" title={`Клиент: ${license.client}. Действует до ${new Date(license.expires).toLocaleDateString('ru')}`}>
+                <span className="text-xs font-bold text-indigo-700 uppercase">{license.plan}</span>
+                <span className="text-xs text-indigo-500">({maxSources === -1 ? '∞' : maxSources} ист.)</span>
+              </div>
+            )}
             <div className="flex items-center gap-2 bg-gray-50 px-2 py-1 rounded border">
               <span className={`w-2.5 h-2.5 rounded-full ${status.bot_online ? 'bg-green-500 animate-pulse' : 'bg-red-500'}`}></span>
               <span className={status.bot_online ? 'text-green-700' : 'text-red-700'}>Бот</span>
@@ -602,44 +581,27 @@ function App() {
       {activeTab === 'posts' && (
         <div className="flex gap-6">
           <div className="w-1/4 bg-white p-4 rounded shadow h-fit flex flex-col gap-4">
-            <button onClick={handleCreateManualPost} className="w-full bg-indigo-600 hover:bg-indigo-700 text-white py-2 rounded font-bold shadow transition">
-              ➕ Создать пост
-            </button>
+            <button onClick={handleCreateManualPost} className="w-full bg-indigo-600 hover:bg-indigo-700 text-white py-2 rounded font-bold shadow transition">➕ Создать пост</button>
             <div>
               <h2 className="text-lg font-bold mb-4">Папки</h2>
               <ul className="space-y-1">
-                <li>
-                  <button onClick={() => setQueueSourceFilter('all')} className={`w-full flex justify-between items-center text-left px-3 py-2 rounded ${queueSourceFilter === 'all' ? 'bg-blue-100 font-bold text-blue-800' : 'hover:bg-gray-100'}`}>
-                    <span>📁 Все посты</span>
-                    <span className="text-xs bg-gray-200 px-2 py-0.5 rounded-full text-gray-600">{posts.length}</span>
-                  </button>
-                </li>
+                <li><button onClick={() => setQueueSourceFilter('all')} className={`w-full flex justify-between items-center text-left px-3 py-2 rounded ${queueSourceFilter === 'all' ? 'bg-blue-100 font-bold text-blue-800' : 'hover:bg-gray-100'}`}><span>📁 Все посты</span><span className="text-xs bg-gray-200 px-2 py-0.5 rounded-full text-gray-600">{posts.length}</span></button></li>
                 {sources.map(s => {
                   const count = posts.filter(p => p.source === s.username).length;
                   return (
-                    <li key={s.id}>
-                      <button onClick={() => setQueueSourceFilter(s.username)} className={`w-full flex justify-between items-center text-left px-3 py-2 rounded ${queueSourceFilter === s.username ? 'bg-blue-100 font-bold text-blue-800' : 'hover:bg-gray-100'}`}>
-                        <span className="truncate pr-2">{s.username === 'manual' ? '✍️ Ручные' : `@${s.username}`}</span>
-                        <span className="text-xs bg-gray-200 px-2 py-0.5 rounded-full text-gray-600">{count}</span>
-                      </button>
-                    </li>
+                    <li key={s.id}><button onClick={() => setQueueSourceFilter(s.username)} className={`w-full flex justify-between items-center text-left px-3 py-2 rounded ${queueSourceFilter === s.username ? 'bg-blue-100 font-bold text-blue-800' : 'hover:bg-gray-100'}`}><span className="truncate pr-2">{s.username === 'manual' ? '✍️ Ручные' : `@${s.username}`}</span><span className="text-xs bg-gray-200 px-2 py-0.5 rounded-full text-gray-600">{count}</span></button></li>
                   )
                 })}
               </ul>
             </div>
           </div>
-
           <div className="w-3/4">
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-2 xl:grid-cols-3 gap-6">
               {filteredQueuePosts.map(post => (
                 <div key={post.id} className="bg-white rounded-lg shadow-md overflow-hidden flex flex-col">
                   {post.media_count > 0 ? (
                     <div className="h-48 bg-gray-200 relative">
-                      {post.media[0].type === 'video' ? (
-                        <video src={getMediaUrl(post.media[0].key)} className="w-full h-full object-cover" controls />
-                      ) : (
-                        <img src={getMediaUrl(post.media[0].key)} className="w-full h-full object-cover" />
-                      )}
+                      {post.media[0].type === 'video' ? <video src={getMediaUrl(post.media[0].key)} className="w-full h-full object-cover" controls /> : <img src={getMediaUrl(post.media[0].key)} className="w-full h-full object-cover" />}
                       {post.media_count > 1 && <span className="absolute top-2 right-2 bg-black bg-opacity-70 text-white px-2 py-1 rounded text-sm z-10">+{post.media_count - 1} фото</span>}
                     </div>
                   ) : <div className="h-24 bg-gray-100 flex items-center justify-center text-gray-400">Без медиа</div>}
@@ -657,9 +619,7 @@ function App() {
                           <button onClick={() => handleAction(post.id, 'delete')} className="flex-1 bg-red-500 text-white py-2 rounded text-sm">🗑 В корзину</button>
                         </div>
                       )}
-                      {post.status === 'published' && (
-                        <button onClick={() => handleAction(post.id, 'unpublish')} className="w-full bg-orange-500 hover:bg-orange-600 text-white py-2 rounded text-sm font-medium">↩️ Отменить публикацию</button>
-                      )}
+                      {post.status === 'published' && <button onClick={() => handleAction(post.id, 'unpublish')} className="w-full bg-orange-500 hover:bg-orange-600 text-white py-2 rounded text-sm font-medium">↩️ Отменить публикацию</button>}
                     </div>
                   </div>
                 </div>
@@ -679,62 +639,90 @@ function App() {
               <button className="bg-blue-600 text-white px-4 py-2 rounded shadow text-sm font-bold">{libUploading ? 'Загрузка...' : '+ Загрузить файл'}</button>
             </div>
           </div>
-
-          <div className="mb-6 bg-emerald-50 p-4 rounded-lg border border-emerald-200">
-            <h3 className="text-sm font-bold text-emerald-800 mb-2">🎨 Сгенерировать картинку в библиотеку</h3>
-            <div className="flex flex-wrap gap-2 mb-2">
-              <select value={imageModel} onChange={e => setImageModel(e.target.value)} className="border rounded p-1 text-sm">
-                {imageModels.map(m => <option key={m} value={m}>{m}</option>)}
-              </select>
-              <select
-                value={`${imageWidth}x${imageHeight}`}
-                onChange={e => {
-                  const [w, h] = e.target.value.split('x').map(Number);
-                  setImageWidth(w); setImageHeight(h);
-                }}
-                className="border rounded p-1 text-sm"
-              >
-                <option value="1080x1080">Квадрат 1080×1080</option>
-                <option value="1080x1350">Портрет 1080×1350</option>
-                <option value="1920x1080">Альбом 1920×1080</option>
-                <option value="1280x720">Альбом (лёгкий) 1280×720</option>
-                <option value="1280x1280">Квадрат (лёгкий) 1280×1280</option>
-              </select>
+          {imgEnabled ? (
+            <div className="mb-6 bg-emerald-50 p-4 rounded-lg border border-emerald-200">
+              <h3 className="text-sm font-bold text-emerald-800 mb-2">🎨 Сгенерировать картинку в библиотеку</h3>
+              <div className="flex flex-wrap gap-2 mb-2">
+                <select value={imageModel} onChange={e => setImageModel(e.target.value)} className="border rounded p-1 text-sm">{imageModels.map(m => <option key={m} value={m}>{m}</option>)}</select>
+                <select value={`${imageWidth}x${imageHeight}`} onChange={e => { const [w, h] = e.target.value.split('x').map(Number); setImageWidth(w); setImageHeight(h); }} className="border rounded p-1 text-sm">
+                  <option value="1080x1080">Квадрат 1080×1080</option><option value="1080x1350">Портрет 1080×1350</option><option value="1920x1080">Альбом 1920×1080</option>
+                </select>
+              </div>
+              <div className="flex gap-2">
+                <input placeholder="Промпт..." className="flex-grow p-2 border rounded text-sm" value={libImagePrompt} onChange={e => setLibImagePrompt(e.target.value)} onKeyDown={e => { if (e.key === 'Enter' && !libImageGenerating) { e.preventDefault(); handleGenerateLibraryImage(); } }} disabled={libImageGenerating} />
+                <button onClick={handleGenerateLibraryImage} disabled={libImageGenerating} className="bg-emerald-600 text-white px-4 py-2 rounded text-sm disabled:opacity-50 whitespace-nowrap">{libImageGenerating ? 'Генерация...' : '🎨 Сгенерировать'}</button>
+              </div>
             </div>
-            <div className="flex gap-2">
-              <input
-                placeholder="Промпт для картинки..."
-                className="flex-grow p-2 border rounded text-sm"
-                value={libImagePrompt}
-                onChange={e => setLibImagePrompt(e.target.value)}
-                onKeyDown={e => { if (e.key === 'Enter' && !libImageGenerating) { e.preventDefault(); handleGenerateLibraryImage(); } }}
-                disabled={libImageGenerating}
-              />
-              <button
-                onClick={handleGenerateLibraryImage}
-                disabled={libImageGenerating}
-                className="bg-emerald-600 text-white px-4 py-2 rounded text-sm disabled:opacity-50 whitespace-nowrap"
-              >
-                {libImageGenerating ? 'Генерация...' : '🎨 Сгенерировать'}
-              </button>
-            </div>
-          </div>
-
+          ) : <div className="mb-6 bg-amber-50 p-4 rounded-lg border border-amber-200 text-sm text-amber-800">🔒 Генерация картинок доступна только на тарифах Pro и Business.</div>}
           <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-4">
             {mediaLib.map(m => (
               <div key={m.id} className="bg-white rounded shadow overflow-hidden group relative h-32">
-                {m.type === 'video' ? (
-                  <video src={getMediaUrl(m.key)} className="w-full h-full object-cover" controls />
-                ) : (
-                  <img src={getMediaUrl(m.key)} className="w-full h-full object-cover" />
-                )}
+                {m.type === 'video' ? <video src={getMediaUrl(m.key)} className="w-full h-full object-cover" controls /> : <img src={getMediaUrl(m.key)} className="w-full h-full object-cover" />}
                 <div className="absolute top-1 right-1 flex gap-1 opacity-0 group-hover:opacity-100 transition z-10">
-                  <button onClick={() => handleDownload(m.key, m.type)} title="Скачать" className="bg-blue-500 text-white w-6 h-6 flex items-center justify-center rounded">📥</button>
-                  <button onClick={() => handleDeleteFromLib(m.id)} title="Удалить" className="bg-red-500 text-white w-6 h-6 flex items-center justify-center rounded">✕</button>
+                  <button onClick={() => handleDownload(m.key, m.type)} className="bg-blue-500 text-white w-6 h-6 flex items-center justify-center rounded">📥</button>
+                  <button onClick={() => handleDeleteFromLib(m.id)} className="bg-red-500 text-white w-6 h-6 flex items-center justify-center rounded">✕</button>
                 </div>
               </div>
             ))}
             {mediaLib.length === 0 && <div className="col-span-full text-center py-10 text-gray-500">Библиотека пуста</div>}
+          </div>
+        </div>
+      )}
+
+      {activeTab === 'licenses' && isOwner && (
+        <div>
+          <div className="bg-white p-6 rounded-lg shadow mb-8">
+            <h2 className="text-xl font-bold mb-4">Выдать новую лицензию</h2>
+            <form onSubmit={handleCreateLicense} className="flex flex-wrap gap-4 items-end">
+              <div className="flex-grow">
+                <label className="block text-xs font-bold text-gray-600 mb-1">Имя клиента / Канал</label>
+                <input type="text" className="w-full p-2 border rounded" value={newLicClient} onChange={e => setNewLicClient(e.target.value)} required />
+              </div>
+              <div>
+                <label className="block text-xs font-bold text-gray-600 mb-1">Тариф</label>
+                <select className="p-2 border rounded" value={newLicPlan} onChange={e => setNewLicPlan(e.target.value)}>
+                  <option value="free">Free (5 ист., без ИИ)</option>
+                  <option value="pro">Pro (50 ист., ИИ, Картинки)</option>
+                  <option value="business">Business (Безлимит)</option>
+                </select>
+              </div>
+              <div>
+                <label className="block text-xs font-bold text-gray-600 mb-1">Дней</label>
+                <input type="number" className="w-24 p-2 border rounded" value={newLicDays} onChange={e => setNewLicDays(e.target.value)} required />
+              </div>
+              <button type="submit" disabled={generatingLic} className="bg-purple-600 text-white px-6 py-2 rounded font-bold disabled:opacity-50 h-[42px]">{generatingLic ? 'Генерация...' : 'Сгенерировать'}</button>
+            </form>
+          </div>
+
+          <div className="bg-white rounded-lg shadow overflow-hidden">
+            <h2 className="text-xl font-bold p-4 border-b">Выданные лицензии</h2>
+            <table className="w-full text-left">
+              <thead><tr className="bg-gray-50 text-sm">
+                <th className="p-4">Клиент</th>
+                <th className="p-4 text-center">Тариф</th>
+                <th className="p-4 text-center">Действует до</th>
+                <th className="p-4 text-center">Статус</th>
+                <th className="p-4 text-right">Действия</th>
+              </tr></thead>
+              <tbody>
+                {licenses.map(l => (
+                  <tr key={l.id} className="border-b last:border-0 hover:bg-gray-50 text-sm">
+                    <td className="p-4 font-bold">{l.client_name}</td>
+                    <td className="p-4 text-center uppercase text-xs font-bold text-indigo-600">{l.plan}</td>
+                    <td className="p-4 text-center">{new Date(l.expires_at).toLocaleDateString('ru')}</td>
+                    <td className="p-4 text-center">
+                      <span className={`px-2 py-1 rounded text-xs font-bold ${l.is_active ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>{l.is_active ? 'Активна' : 'Отключена'}</span>
+                    </td>
+                    <td className="p-4 text-right flex justify-end gap-2">
+                      <button onClick={() => copyToClipboard(l.license_key)} className="text-blue-600 hover:underline">Копировать</button>
+                      <button onClick={() => handleToggleLicense(l.id)} className="text-orange-500 hover:underline">{l.is_active ? 'Отключить' : 'Включить'}</button>
+                      <button onClick={() => handleDeleteLicense(l.id)} className="text-red-500 hover:underline">Удалить</button>
+                    </td>
+                  </tr>
+                ))}
+                {licenses.length === 0 && <tr><td colSpan="5" className="p-10 text-center text-gray-500">Вы еще не выдавали лицензии</td></tr>}
+              </tbody>
+            </table>
           </div>
         </div>
       )}
@@ -750,11 +738,7 @@ function App() {
               <div key={post.id} className="bg-gray-50 rounded-lg shadow-sm border border-gray-200 overflow-hidden flex flex-col opacity-80">
                 {post.media_count > 0 ? (
                   <div className="h-48 bg-gray-200 relative grayscale">
-                    {post.media[0].type === 'video' ? (
-                      <video src={getMediaUrl(post.media[0].key)} className="w-full h-full object-cover" controls />
-                    ) : (
-                      <img src={getMediaUrl(post.media[0].key)} className="w-full h-full object-cover" />
-                    )}
+                    {post.media[0].type === 'video' ? <video src={getMediaUrl(post.media[0].key)} className="w-full h-full object-cover" controls /> : <img src={getMediaUrl(post.media[0].key)} className="w-full h-full object-cover" />}
                   </div>
                 ) : <div className="h-24 bg-gray-100 flex items-center justify-center text-gray-400">Без медиа</div>}
                 <div className="p-4 flex-grow flex flex-col">
@@ -783,57 +767,31 @@ function App() {
               <p>Перешли любое сообщение из этого канала в чат с ботом <b>@tel_forw_bot</b>.</p>
             </div>
             <form onSubmit={handleAddSource} className="flex gap-2">
-              <input type="text" placeholder="@channel_name или -100..." className="flex-grow p-3 border rounded-lg outline-none" value={newSourceInput} onChange={e => setNewSourceInput(e.target.value)} disabled={addingSource} />
-              <button type="submit" disabled={addingSource} className="bg-blue-600 text-white px-6 py-3 rounded-lg font-bold">Добавить</button>
+              <input type="text" placeholder="@channel_name или -100..." className="flex-grow p-3 border rounded-lg outline-none" value={newSourceInput} onChange={e => setNewSourceInput(e.target.value)} disabled={addingSource || sourcesLimitReached} />
+              <button type="submit" disabled={addingSource || sourcesLimitReached} className="bg-blue-600 text-white px-6 py-3 rounded-lg font-bold disabled:opacity-50">Добавить</button>
             </form>
+            {sourcesLimitReached && <p className="text-red-500 text-sm mt-2 font-medium">Достигнут лимит источников для тарифа '{license?.plan}' ({maxSources}). Обновите тариф.</p>}
+            <p className="text-xs text-gray-500 mt-2">Источников: {sources.length} {maxSources !== -1 ? `/ ${maxSources}` : '(безлимит)'}</p>
           </div>
           <div className="bg-white rounded-lg shadow overflow-hidden">
             <h2 className="text-xl font-bold p-4 border-b">Активные источники</h2>
             <table className="w-full text-left">
               <thead><tr className="bg-gray-50 text-sm">
-                <th className="p-4">Название</th>
-                <th className="p-4 text-center">Статус</th>
-                <th className="p-4 text-center">Авто-публикация</th>
-                <th className="p-4 text-center">Шаблоны источника</th>
-                <th className="p-4 text-right">Действия</th>
+                <th className="p-4">Название</th><th className="p-4 text-center">Статус</th><th className="p-4 text-center">Авто-публикация</th><th className="p-4 text-center">Шаблоны источника</th><th className="p-4 text-right">Действия</th>
               </tr></thead>
               <tbody>
                 {sources.map(src => (
                   <tr key={src.id} className="border-b last:border-0 hover:bg-gray-50">
-                    <td className="p-4">
-                      <div className="font-bold">{src.title}</div>
-                      <div className="text-sm text-gray-500">@{src.username}</div>
-                    </td>
-                    <td className="p-4 text-center">
-                      <button onClick={() => handleToggleSource(src.id)} className={`px-3 py-1 rounded-full text-xs font-bold ${src.enabled ? 'bg-green-100 text-green-800' : 'bg-gray-200 text-gray-600'}`}>{src.enabled ? 'Активен' : 'Отключен'}</button>
-                    </td>
+                    <td className="p-4"><div className="font-bold">{src.title}</div><div className="text-sm text-gray-500">@{src.username}</div></td>
+                    <td className="p-4 text-center"><button onClick={() => handleToggleSource(src.id)} className={`px-3 py-1 rounded-full text-xs font-bold ${src.enabled ? 'bg-green-100 text-green-800' : 'bg-gray-200 text-gray-600'}`}>{src.enabled ? 'Активен' : 'Отключен'}</button></td>
                     <td className="p-4 text-center">
                       <div className="flex flex-col items-center gap-1">
-                        <input 
-                          type="checkbox" 
-                          checked={src.auto_publish || false} 
-                          onChange={(e) => handleToggleAutoPublish(src, e.target.checked)}
-                          className="w-5 h-5 cursor-pointer accent-indigo-600" 
-                          title="Включить авто-публикацию"
-                        />
-                        {src.auto_publish && (
-                          <select 
-                            value={src.auto_template_id || ""} 
-                            onChange={(e) => handleSetAutoTemplate(src, e.target.value)}
-                            className="text-xs p-1 border rounded w-full mt-1"
-                          >
-                            <option value="">-- Без шаблона --</option>
-                            {templates.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
-                          </select>
-                        )}
+                        <input type="checkbox" checked={src.auto_publish || false} onChange={(e) => handleToggleAutoPublish(src, e.target.checked)} className="w-5 h-5 cursor-pointer accent-indigo-600" />
+                        {src.auto_publish && <select value={src.auto_template_id || ""} onChange={(e) => handleSetAutoTemplate(src, e.target.value)} className="text-xs p-1 border rounded w-full mt-1"><option value="">-- Без шаблона --</option>{templates.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}</select>}
                       </div>
                     </td>
-                    <td className="p-4 text-center">
-                      <button onClick={() => setEditingSource(src)} className="text-blue-600 text-sm font-medium">📎 {src.templates?.length || 0} шт.</button>
-                    </td>
-                    <td className="p-4 text-right">
-                      <button onClick={() => handleDeleteSource(src.id)} className="text-red-500 text-sm font-medium">Удалить</button>
-                    </td>
+                    <td className="p-4 text-center"><button onClick={() => setEditingSource(src)} className="text-blue-600 text-sm font-medium">📎 {src.templates?.length || 0} шт.</button></td>
+                    <td className="p-4 text-right"><button onClick={() => handleDeleteSource(src.id)} className="text-red-500 text-sm font-medium">Удалить</button></td>
                   </tr>
                 ))}
               </tbody>
@@ -848,9 +806,7 @@ function App() {
             <h2 className="text-lg font-bold mb-4">Папки</h2>
             <ul className="mb-4 space-y-1">
               <li><button onClick={() => setActiveFolder(null)} className={`w-full text-left px-3 py-2 rounded ${activeFolder === null ? 'bg-blue-100 font-bold text-blue-800' : 'hover:bg-gray-100'}`}>Все шаблоны</button></li>
-              {folders.map(f => (
-                <li key={f.id} className="flex justify-between items-center group"><button onClick={() => setActiveFolder(f.id)} className={`flex-grow text-left px-3 py-2 rounded ${activeFolder === f.id ? 'bg-blue-100 font-bold text-blue-800' : 'hover:bg-gray-100'}`}>📁 {f.name}</button><button onClick={() => handleDeleteFolder(f.id)} className="text-red-400 opacity-0 group-hover:opacity-100 px-2">✕</button></li>
-              ))}
+              {folders.map(f => <li key={f.id} className="flex justify-between items-center group"><button onClick={() => setActiveFolder(f.id)} className={`flex-grow text-left px-3 py-2 rounded ${activeFolder === f.id ? 'bg-blue-100 font-bold text-blue-800' : 'hover:bg-gray-100'}`}>📁 {f.name}</button><button onClick={() => handleDeleteFolder(f.id)} className="text-red-400 opacity-0 group-hover:opacity-100 px-2">✕</button></li>)}
             </ul>
             <form onSubmit={handleCreateFolder} className="flex gap-1"><input placeholder="Новая папка" className="border p-1 text-sm rounded w-full" value={newFolderName} onChange={e => setNewFolderName(e.target.value)} /><button type="submit" className="bg-gray-200 px-3 rounded text-sm font-bold">+</button></form>
           </div>
@@ -864,29 +820,12 @@ function App() {
                 <select className="p-2 border rounded" value={newTemplate.folder_id} onChange={e => setNewTemplate({...newTemplate, folder_id: e.target.value})}><option value="">-- Без папки --</option>{folders.map(f => <option key={f.id} value={f.id}>{f.name}</option>)}</select>
                 <div className="border-t pt-3 mt-1">
                   <label className="block text-xs font-bold text-gray-600 mb-1">Медиа шаблона</label>
-                  <div className="flex flex-wrap gap-2 mb-2">
-                    {newTemplate.media_json?.map((m, i) => (
-                      <div key={i} className="relative w-12 h-12 border rounded group bg-gray-100">
-                        {m.type === 'video' ? (
-                           <video src={getMediaUrl(m.key)} className="w-full h-full object-cover" />
-                        ) : (
-                           <img src={getMediaUrl(m.key)} className="w-full h-full object-cover" />
-                        )}
-                        <button type="button" onClick={() => removeTemplateMedia(i)} className="absolute top-0 right-0 bg-red-500 text-white w-4 h-4 text-[10px] rounded-bl z-10">✕</button>
-                      </div>
-                    ))}
-                  </div>
+                  <div className="flex flex-wrap gap-2 mb-2">{newTemplate.media_json?.map((m, i) => <div key={i} className="relative w-12 h-12 border rounded group bg-gray-100">{m.type === 'video' ? <video src={getMediaUrl(m.key)} className="w-full h-full object-cover" /> : <img src={getMediaUrl(m.key)} className="w-full h-full object-cover" />}<button type="button" onClick={() => removeTemplateMedia(i)} className="absolute top-0 right-0 bg-red-500 text-white w-4 h-4 text-[10px] rounded-bl z-10">✕</button></div>)}</div>
                   <input type="file" onChange={handleUploadTemplateMedia} disabled={tplUploading} className="block w-full text-xs" />
                 </div>
                 <div className="border-t pt-3 mt-1">
                   <label className="block text-xs font-bold text-gray-600 mb-1">🔗 Кнопки шаблона</label>
-                  {newTemplate.buttons_json?.map((btn, idx) => (
-                    <div key={idx} className="flex gap-1 mb-2">
-                      <input placeholder="Текст" className="p-1 border rounded text-xs w-1/3" value={btn.text} onChange={e => updateTemplateButton(idx, 'text', e.target.value)} />
-                      <input placeholder="https://..." className="p-1 border rounded text-xs flex-grow" value={btn.url} onChange={e => updateTemplateButton(idx, 'url', e.target.value)} />
-                      <button type="button" onClick={() => removeTemplateButton(idx)} className="text-red-500 font-bold text-xs px-1">✕</button>
-                    </div>
-                  ))}
+                  {newTemplate.buttons_json?.map((btn, idx) => <div key={idx} className="flex gap-1 mb-2"><input placeholder="Текст" className="p-1 border rounded text-xs w-1/3" value={btn.text} onChange={e => updateTemplateButton(idx, 'text', e.target.value)} /><input placeholder="https://..." className="p-1 border rounded text-xs flex-grow" value={btn.url} onChange={e => updateTemplateButton(idx, 'url', e.target.value)} /><button type="button" onClick={() => removeTemplateButton(idx)} className="text-red-500 font-bold text-xs px-1">✕</button></div>)}
                   <button type="button" onClick={addTemplateButton} className="text-xs bg-gray-100 text-gray-700 px-2 py-1 rounded">+ Кнопка</button>
                 </div>
                 <button type="submit" className="bg-blue-600 text-white py-2 rounded font-bold mt-2">Создать</button>
@@ -899,18 +838,9 @@ function App() {
                   <div key={t.id} className="bg-white p-3 rounded shadow flex flex-col justify-between">
                     <div className="flex justify-between items-start">
                       <div><h3 className="font-bold">{t.name} <span className="text-xs font-normal text-gray-500">({t.mode})</span></h3><p className="text-sm text-gray-600 mt-1 whitespace-pre-wrap">{t.text}</p></div>
-                      <div className="flex gap-2">
-                        <button onClick={() => openEditTemplate(t)} className="text-blue-500 text-sm font-medium">✏️</button>
-                        <button onClick={() => handleDeleteTemplate(t.id)} className="text-red-500 text-sm font-medium">Удалить</button>
-                      </div>
+                      <div className="flex gap-2"><button onClick={() => openEditTemplate(t)} className="text-blue-500 text-sm font-medium">✏️</button><button onClick={() => handleDeleteTemplate(t.id)} className="text-red-500 text-sm font-medium">Удалить</button></div>
                     </div>
-                    {t.media_json?.length > 0 && (
-                      <div className="flex gap-1 mt-2">
-                        {t.media_json.map((m, i) => (
-                          m.type === 'video' ? <video key={i} src={getMediaUrl(m.key)} className="w-8 h-8 object-cover rounded" /> : <img key={i} src={getMediaUrl(m.key)} className="w-8 h-8 object-cover rounded" />
-                        ))}
-                      </div>
-                    )}
+                    {t.media_json?.length > 0 && <div className="flex gap-1 mt-2">{t.media_json.map((m, i) => m.type === 'video' ? <video key={i} src={getMediaUrl(m.key)} className="w-8 h-8 object-cover rounded" /> : <img key={i} src={getMediaUrl(m.key)} className="w-8 h-8 object-cover rounded" />)}</div>}
                     {t.buttons_json?.length > 0 && <div className="text-xs text-blue-500 mt-2">🔗 {t.buttons_json.length} кнопок(и)</div>}
                   </div>
                 ))}
@@ -930,9 +860,7 @@ function App() {
           </div>
           <div className="flex justify-between items-center mb-4">
             <h2 className="text-2xl font-bold">Эффективность источников</h2>
-            <button onClick={handleClearChannel} disabled={clearing} className="bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded shadow text-sm font-bold disabled:opacity-50">
-              {clearing ? 'Очистка...' : '🧹 Очистить канал'}
-            </button>
+            <button onClick={handleClearChannel} disabled={clearing} className="bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded shadow text-sm font-bold disabled:opacity-50">{clearing ? 'Очистка...' : '🧹 Очистить канал'}</button>
           </div>
           <div className="bg-white rounded-lg shadow overflow-hidden">
             <table className="w-full text-left border-collapse">
@@ -955,20 +883,14 @@ function App() {
                 <div className="flex justify-between items-center mb-2">
                   <label className="text-sm font-medium">Медиа ({editingPost.media?.length || 0})</label>
                   <div className="flex gap-2">
-                    <button onClick={() => handleRefetch(editingPost.id)} disabled={refetching} className="text-xs bg-gray-200 text-gray-700 px-2 py-1 rounded font-bold hover:bg-gray-300 disabled:opacity-50">
-                      {refetching ? 'Скачивание...' : '🔄 Скачать заново'}
-                    </button>
+                    <button onClick={() => handleRefetch(editingPost.id)} disabled={refetching} className="text-xs bg-gray-200 text-gray-700 px-2 py-1 rounded font-bold hover:bg-gray-300 disabled:opacity-50">{refetching ? 'Скачивание...' : '🔄 Скачать заново'}</button>
                     <button onClick={() => setShowLibSelector(true)} className="text-xs bg-purple-100 text-purple-700 px-2 py-1 rounded font-bold hover:bg-purple-200">📁 Из библиотеки</button>
                   </div>
                 </div>
                 <div className="flex flex-wrap gap-2">
                   {editingPost.media?.map(m => (
                     <div key={m.id} className="relative w-20 h-20 border rounded group bg-gray-100">
-                      {m.type === 'video' ? (
-                        <video src={getMediaUrl(m.key)} className="w-full h-full object-cover" controls />
-                      ) : (
-                        <img src={getMediaUrl(m.key)} className="w-full h-full object-cover" />
-                      )}
+                      {m.type === 'video' ? <video src={getMediaUrl(m.key)} className="w-full h-full object-cover" controls /> : <img src={getMediaUrl(m.key)} className="w-full h-full object-cover" />}
                       <div className="absolute top-0 right-0 flex opacity-0 group-hover:opacity-100 transition z-10">
                         <button onClick={() => handleDownload(m.key, m.type)} title="Скачать на ПК" className="bg-green-500 text-white w-6 h-6 flex items-center justify-center text-xs">📥</button>
                         <button onClick={() => handleSaveToLib(m.id)} title="Сохранить в библиотеку" className="bg-blue-500 text-white w-6 h-6 flex items-center justify-center text-xs">💾</button>
@@ -994,98 +916,48 @@ function App() {
                 </div>
               </div>
 
-              <div className="mb-4 bg-gray-100 p-3 rounded border border-gray-200">
-                <label className="block text-sm font-bold text-gray-700 mb-2">🤖 Помощник ИИ</label>
-                
-                <div className="flex gap-2 mb-2">
-                  <input 
-                    placeholder="Задание для ИИ (например: 'Напиши пост про ...')" 
-                    className="flex-grow p-2 border rounded text-sm"
-                    value={aiPrompt}
-                    onChange={e => setAiPrompt(e.target.value)}
-                  />
-                  <button onClick={handleGenerateText} disabled={aiGenerating} className="bg-pink-600 text-white px-3 py-1 rounded text-sm disabled:opacity-50 whitespace-nowrap">
-                    {aiGenerating ? '...' : '✨ Написать с ИИ'}
-                  </button>
-                </div>
-
-                <div className="flex flex-wrap gap-2 items-center">
-                  <button onClick={handleTranslate} disabled={aiLoading} className="bg-indigo-500 text-white px-3 py-1.5 rounded text-sm disabled:opacity-50">🇷🇺 Перевести</button>
-                  <div className="flex items-center gap-1 bg-white border rounded px-2 py-1">
-                    <input type="number" placeholder="Слов" className="w-16 outline-none text-sm" value={wordCount} onChange={e => setWordCount(e.target.value)} />
-                    <button onClick={handleRewrite} disabled={aiLoading} className="bg-indigo-500 text-white px-3 py-1.5 rounded text-sm disabled:opacity-50">🔄 Рерайт</button>
+              {aiEnabled ? (
+                <div className="mb-4 bg-gray-100 p-3 rounded border border-gray-200">
+                  <label className="block text-sm font-bold text-gray-700 mb-2">🤖 Помощник ИИ</label>
+                  <div className="flex gap-2 mb-2">
+                    <input placeholder="Задание для ИИ (например: 'Напиши пост про ...')" className="flex-grow p-2 border rounded text-sm" value={aiPrompt} onChange={e => setAiPrompt(e.target.value)} />
+                    <button onClick={handleGenerateText} disabled={aiGenerating} className="bg-pink-600 text-white px-3 py-1 rounded text-sm disabled:opacity-50 whitespace-nowrap">{aiGenerating ? '...' : '✨ Написать с ИИ'}</button>
                   </div>
-                  <button onClick={handleClearLinks} disabled={linkClearing} className="bg-gray-600 text-white px-3 py-1.5 rounded text-sm disabled:opacity-50">
-                    {linkClearing ? '...' : '🧹 Очистить ссылки'}
-                  </button>
-                  {aiLoading && <span className="text-sm text-indigo-600 animate-pulse ml-auto">Нейросеть думает...</span>}
-                </div>
-              </div>
-
-              <div className="mb-4 bg-emerald-50 p-3 rounded border border-emerald-200">
-                <label className="block text-sm font-bold text-emerald-800 mb-2">🎨 Генерация картинки</label>
-                <div className="flex flex-wrap gap-2 mb-2">
-                  <select value={imageModel} onChange={e => setImageModel(e.target.value)} className="border rounded p-1 text-sm">
-                    {imageModels.map(m => <option key={m} value={m}>{m}</option>)}
-                  </select>
-                  <select
-                    value={`${imageWidth}x${imageHeight}`}
-                    onChange={e => {
-                      const [w, h] = e.target.value.split('x').map(Number);
-                      setImageWidth(w); setImageHeight(h);
-                    }}
-                    className="border rounded p-1 text-sm"
-                  >
-                    <option value="1080x1080">Квадрат 1080×1080</option>
-                    <option value="1080x1350">Портрет 1080×1350</option>
-                    <option value="1920x1080">Альбом 1920×1080</option>
-                    <option value="1280x720">Альбом (лёгкий) 1280×720</option>
-                    <option value="1280x1280">Квадрат (лёгкий) 1280×1280</option>
-                  </select>
-                  <input
-                    type="number"
-                    placeholder="Seed (необязательно)"
-                    className="border rounded p-1 text-sm w-28"
-                    value={imageSeed}
-                    onChange={e => setImageSeed(e.target.value)}
-                  />
-                </div>
-                <div className="flex gap-2">
-                  <input
-                    placeholder="Промпт для картинки..."
-                    className="flex-grow p-2 border rounded text-sm"
-                    value={imagePrompt}
-                    onChange={e => setImagePrompt(e.target.value)}
-                    onKeyDown={e => { if (e.key === 'Enter' && !imageGenerating) { e.preventDefault(); handleGenerateImage(); } }}
-                    disabled={imageGenerating}
-                  />
-                  <button
-                    onClick={() => handleGenerateImage()}
-                    disabled={imageGenerating}
-                    className="bg-emerald-600 text-white px-3 py-1 rounded text-sm disabled:opacity-50 whitespace-nowrap"
-                  >
-                    {imageGenerating ? 'Генерация...' : '🎨 Сгенерировать'}
-                  </button>
-                </div>
-
-                {lastGeneratedMediaId && editingPost.media?.find(m => m.id === lastGeneratedMediaId) && (
-                  <div className="mt-2 flex items-center gap-2 bg-white p-2 rounded border">
-                    <img
-                      src={getMediaUrl(editingPost.media.find(m => m.id === lastGeneratedMediaId).key)}
-                      className="w-16 h-16 object-cover rounded"
-                    />
-                    <span className="text-xs text-gray-600 flex-grow">Сгенерировано</span>
-                    <button
-                      onClick={() => handleGenerateImage(imagePrompt, lastGeneratedMediaId)}
-                      disabled={imageGenerating}
-                      className="text-xs bg-amber-500 text-white px-2 py-1 rounded disabled:opacity-50"
-                    >
-                      🔄 Заменить
-                    </button>
+                  <div className="flex flex-wrap gap-2 items-center">
+                    <button onClick={handleTranslate} disabled={aiLoading} className="bg-indigo-500 text-white px-3 py-1.5 rounded text-sm disabled:opacity-50">🇷🇺 Перевести</button>
+                    <div className="flex items-center gap-1 bg-white border rounded px-2 py-1">
+                      <input type="number" placeholder="Слов" className="w-16 outline-none text-sm" value={wordCount} onChange={e => setWordCount(e.target.value)} />
+                      <button onClick={handleRewrite} disabled={aiLoading} className="bg-indigo-500 text-white px-3 py-1.5 rounded text-sm disabled:opacity-50">🔄 Рерайт</button>
+                    </div>
+                    <button onClick={handleClearLinks} disabled={linkClearing} className="bg-gray-600 text-white px-3 py-1.5 rounded text-sm disabled:opacity-50">{linkClearing ? '...' : '🧹 Очистить ссылки'}</button>
+                    {aiLoading && <span className="text-sm text-indigo-600 animate-pulse ml-auto">Нейросеть думает...</span>}
                   </div>
-                )}
-                {imageGenerating && <p className="text-xs text-emerald-700 mt-2 animate-pulse">Генерация занимает 5–30 секунд...</p>}
-              </div>
+                </div>
+              ) : <div className="mb-4 bg-amber-50 p-3 rounded border border-amber-200 text-sm text-amber-800">🔒 ИИ-функции доступны только на тарифах Pro и Business.</div>}
+
+              {imgEnabled ? (
+                <div className="mb-4 bg-emerald-50 p-3 rounded border border-emerald-200">
+                  <label className="block text-sm font-bold text-emerald-800 mb-2">🎨 Генерация картинки</label>
+                  <div className="flex flex-wrap gap-2 mb-2">
+                    <select value={imageModel} onChange={e => setImageModel(e.target.value)} className="border rounded p-1 text-sm">{imageModels.map(m => <option key={m} value={m}>{m}</option>)}</select>
+                    <select value={`${imageWidth}x${imageHeight}`} onChange={e => { const [w, h] = e.target.value.split('x').map(Number); setImageWidth(w); setImageHeight(h); }} className="border rounded p-1 text-sm">
+                      <option value="1080x1080">Квадрат 1080×1080</option><option value="1080x1350">Портрет 1080×1350</option><option value="1920x1080">Альбом 1920×1080</option>
+                    </select>
+                    <input type="number" placeholder="Seed" className="border rounded p-1 text-sm w-28" value={imageSeed} onChange={e => setImageSeed(e.target.value)} />
+                  </div>
+                  <div className="flex gap-2">
+                    <input placeholder="Промпт для картинки..." className="flex-grow p-2 border rounded text-sm" value={imagePrompt} onChange={e => setImagePrompt(e.target.value)} onKeyDown={e => { if (e.key === 'Enter' && !imageGenerating) { e.preventDefault(); handleGenerateImage(); } }} disabled={imageGenerating} />
+                    <button onClick={() => handleGenerateImage()} disabled={imageGenerating} className="bg-emerald-600 text-white px-3 py-1 rounded text-sm disabled:opacity-50 whitespace-nowrap">{imageGenerating ? 'Генерация...' : '🎨 Сгенерировать'}</button>
+                  </div>
+                  {lastGeneratedMediaId && editingPost.media?.find(m => m.id === lastGeneratedMediaId) && (
+                    <div className="mt-2 flex items-center gap-2 bg-white p-2 rounded border">
+                      <img src={getMediaUrl(editingPost.media.find(m => m.id === lastGeneratedMediaId).key)} className="w-16 h-16 object-cover rounded" />
+                      <span className="text-xs text-gray-600 flex-grow">Сгенерировано</span>
+                      <button onClick={() => handleGenerateImage(imagePrompt, lastGeneratedMediaId)} disabled={imageGenerating} className="text-xs bg-amber-500 text-white px-2 py-1 rounded disabled:opacity-50">🔄 Заменить</button>
+                    </div>
+                  )}
+                </div>
+              ) : <div className="mb-4 bg-amber-50 p-3 rounded border border-amber-200 text-sm text-amber-800">🔒 Генерация картинок доступна только на тарифах Pro и Business.</div>}
 
               <div className="mb-4 bg-blue-50 p-3 rounded border border-blue-100">
                 <label className="block text-sm font-bold text-blue-800 mb-2">🔗 Кнопки под постом</label>
@@ -1121,14 +993,8 @@ function App() {
               <div className="grid grid-cols-3 md:grid-cols-5 gap-4">
                 {mediaLib.map(m => (
                   <div key={m.id} onClick={() => handleAttachFromLib(m.id)} className="cursor-pointer border rounded overflow-hidden hover:ring-2 hover:ring-blue-500 transition group relative h-24 bg-gray-100">
-                    {m.type === 'video' ? (
-                      <video src={getMediaUrl(m.key)} className="w-full h-full object-cover" controls />
-                    ) : (
-                      <img src={getMediaUrl(m.key)} className="w-full h-full object-cover" />
-                    )}
-                    <div className="absolute inset-0 bg-black bg-opacity-0 group-hover:bg-opacity-30 flex items-center justify-center transition z-0">
-                      <span className="text-white opacity-0 group-hover:opacity-100 font-bold">+ Добавить</span>
-                    </div>
+                    {m.type === 'video' ? <video src={getMediaUrl(m.key)} className="w-full h-full object-cover" controls /> : <img src={getMediaUrl(m.key)} className="w-full h-full object-cover" />}
+                    <div className="absolute inset-0 bg-black bg-opacity-0 group-hover:bg-opacity-30 flex items-center justify-center transition z-0"><span className="text-white opacity-0 group-hover:opacity-100 font-bold">+ Добавить</span></div>
                   </div>
                 ))}
                 {mediaLib.length === 0 && <div className="col-span-full text-center py-8 text-gray-500">Библиотека пуста</div>}
@@ -1165,39 +1031,16 @@ function App() {
               <form id="editTemplateForm" onSubmit={handleUpdateTemplate} className="flex flex-col gap-3">
                 <input placeholder="Название" className="p-2 border rounded" value={editTemplateData.name} onChange={e => setEditTemplateData({...editTemplateData, name: e.target.value})} required />
                 <textarea placeholder="Текст" className="p-2 border rounded h-24" value={editTemplateData.text} onChange={e => setEditTemplateData({...editTemplateData, text: e.target.value})} />
-                <select className="p-2 border rounded" value={editTemplateData.attach_mode} onChange={e => setEditTemplateData({...editTemplateData, attach_mode: e.target.value})}>
-                  <option value="append">В конец</option><option value="prepend">В начало</option><option value="standalone">Отдельное</option>
-                </select>
-                <select className="p-2 border rounded" value={editTemplateData.folder_id} onChange={e => setEditTemplateData({...editTemplateData, folder_id: e.target.value})}>
-                  <option value="">-- Без папки --</option>{folders.map(f => <option key={f.id} value={f.id}>{f.name}</option>)}
-                </select>
-
+                <select className="p-2 border rounded" value={editTemplateData.attach_mode} onChange={e => setEditTemplateData({...editTemplateData, attach_mode: e.target.value})}><option value="append">В конец</option><option value="prepend">В начало</option><option value="standalone">Отдельное</option></select>
+                <select className="p-2 border rounded" value={editTemplateData.folder_id} onChange={e => setEditTemplateData({...editTemplateData, folder_id: e.target.value})}><option value="">-- Без папки --</option>{folders.map(f => <option key={f.id} value={f.id}>{f.name}</option>)}</select>
                 <div className="border-t pt-3 mt-1">
                   <label className="block text-xs font-bold text-gray-600 mb-1">Медиа шаблона</label>
-                  <div className="flex flex-wrap gap-2 mb-2">
-                    {editTemplateData.media_json?.map((m, i) => (
-                      <div key={i} className="relative w-12 h-12 border rounded group bg-gray-100">
-                        {m.type === 'video' ? (
-                           <video src={getMediaUrl(m.key)} className="w-full h-full object-cover" />
-                        ) : (
-                           <img src={getMediaUrl(m.key)} className="w-full h-full object-cover" />
-                        )}
-                        <button type="button" onClick={() => removeEditTemplateMedia(i)} className="absolute top-0 right-0 bg-red-500 text-white w-4 h-4 text-[10px] rounded-bl z-10">✕</button>
-                      </div>
-                    ))}
-                  </div>
+                  <div className="flex flex-wrap gap-2 mb-2">{editTemplateData.media_json?.map((m, i) => <div key={i} className="relative w-12 h-12 border rounded group bg-gray-100">{m.type === 'video' ? <video src={getMediaUrl(m.key)} className="w-full h-full object-cover" /> : <img src={getMediaUrl(m.key)} className="w-full h-full object-cover" />}<button type="button" onClick={() => removeEditTemplateMedia(i)} className="absolute top-0 right-0 bg-red-500 text-white w-4 h-4 text-[10px] rounded-bl z-10">✕</button></div>)}</div>
                   <input type="file" onChange={handleUploadEditTemplateMedia} disabled={editTplUploading} className="block w-full text-xs" />
                 </div>
-
                 <div className="border-t pt-3 mt-1">
                   <label className="block text-xs font-bold text-gray-600 mb-1">🔗 Кнопки шаблона</label>
-                  {editTemplateData.buttons_json?.map((btn, idx) => (
-                    <div key={idx} className="flex gap-1 mb-2">
-                      <input placeholder="Текст" className="p-1 border rounded text-xs w-1/3" value={btn.text} onChange={e => updateEditTemplateButton(idx, 'text', e.target.value)} />
-                      <input placeholder="https://..." className="p-1 border rounded text-xs flex-grow" value={btn.url} onChange={e => updateEditTemplateButton(idx, 'url', e.target.value)} />
-                      <button type="button" onClick={() => removeEditTemplateButton(idx)} className="text-red-500 font-bold text-xs px-1">✕</button>
-                    </div>
-                  ))}
+                  {editTemplateData.buttons_json?.map((btn, idx) => <div key={idx} className="flex gap-1 mb-2"><input placeholder="Текст" className="p-1 border rounded text-xs w-1/3" value={btn.text} onChange={e => updateEditTemplateButton(idx, 'text', e.target.value)} /><input placeholder="https://..." className="p-1 border rounded text-xs flex-grow" value={btn.url} onChange={e => updateEditTemplateButton(idx, 'url', e.target.value)} /><button type="button" onClick={() => removeEditTemplateButton(idx)} className="text-red-500 font-bold text-xs px-1">✕</button></div>)}
                   <button type="button" onClick={addEditTemplateButton} className="text-xs bg-gray-100 text-gray-700 px-2 py-1 rounded">+ Кнопка</button>
                 </div>
               </form>

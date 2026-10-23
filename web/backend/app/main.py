@@ -1,17 +1,17 @@
 """FastAPI backend для веб-панели."""
-
 import io
 import os
 import time
 import uuid
-import subprocess
-import sys
 import hmac
 import hashlib
 import jwt
+import base64
+import json
 from datetime import datetime, timedelta, timezone
+from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 
-from fastapi import FastAPI, HTTPException, File, UploadFile, Depends, status
+from fastapi import FastAPI, HTTPException, File, UploadFile, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from pydantic import BaseModel
@@ -20,9 +20,9 @@ from sqlalchemy.orm import selectinload
 from telethon import TelegramClient
 from telethon.sessions import StringSession
 
-from shared.config import get_settings
+from shared.config import get_settings, license_info, DEFAULT_PLANS
 from shared.db import SessionLocal
-from shared.models import Post, PostStatus, PostMedia, Template, PostTemplate, TemplateFolder, Source, SourceTemplate, MediaLibrary, AppSettings
+from shared.models import Post, PostStatus, PostMedia, Template, PostTemplate, TemplateFolder, Source, SourceTemplate, MediaLibrary, AppSettings, ClientLicense
 from shared.publisher import publish_post_to_channel
 from shared.minio_client import get_minio
 from shared.ai_helper import translate_text, rewrite_text, generate_text, generate_image, list_image_models
@@ -32,13 +32,7 @@ from scripts.clear_target_channel import clear_target_channel
 
 settings = get_settings()
 app = FastAPI(title="TG Forwarder Web API")
-
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True, allow_methods=["*"], allow_headers=["*"],
-)
-
+app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_credentials=True, allow_methods=["*"], allow_headers=["*"])
 security = HTTPBearer(auto_error=False)
 
 def create_access_token(data: dict):
@@ -53,43 +47,112 @@ def get_current_admin(credentials: HTTPAuthorizationCredentials = Depends(securi
         return payload
     except jwt.PyJWTError: raise HTTPException(status_code=401, detail="Invalid token")
 
-# --- СТАТУС HEARTBEAT ---
+def get_current_owner(_=Depends(get_current_admin)):
+    if license_info.plan != "owner":
+        raise HTTPException(status_code=403, detail="Доступно только для владельца.")
+    return True
+
+def check_ai_enabled():
+    if not license_info.get("ai_enabled"):
+        raise HTTPException(status_code=403, detail="AI-функции недоступны в вашем тарифе.")
+
+def check_image_gen():
+    if not license_info.get("image_gen_enabled"):
+        raise HTTPException(status_code=403, detail="Генерация картинок недоступна в вашем тарифе.")
+
+# --- УПРАВЛЕНИЕ ЛИЦЕНЗИЯМИ (ТОЛЬКО ДЛЯ OWNER) ---
+class LicenseCreate(BaseModel):
+    client_name: str
+    plan: str
+    days: int
+
+@app.get("/api/admin/licenses")
+async def get_licenses(_=Depends(get_current_owner)):
+    async with SessionLocal() as session:
+        result = await session.execute(select(ClientLicense).order_by(ClientLicense.id.desc()))
+        return [{
+            "id": l.id, "client_name": l.client_name, "plan": l.plan, 
+            "expires_at": l.expires_at.isoformat(), "is_active": l.is_active,
+            "license_key": l.license_key
+        } for l in result.scalars().all()]
+
+@app.post("/api/admin/licenses")
+async def create_license(data: LicenseCreate, _=Depends(get_current_owner)):
+    if not settings.license_private_key:
+        raise HTTPException(status_code=500, detail="Приватный ключ не настроен на сервере.")
+    if data.plan not in DEFAULT_PLANS:
+        raise HTTPException(status_code=400, detail="Неверный тариф.")
+    
+    try:
+        private_key = Ed25519PrivateKey.from_private_bytes(base64.b64decode(settings.license_private_key))
+        expires = (datetime.now() + timedelta(days=data.days)).isoformat()
+        payload = {
+            "client": data.client_name,
+            "expires": expires,
+            "plan": data.plan,
+            "limits": DEFAULT_PLANS[data.plan]
+        }
+        payload_b64 = base64.b64encode(json.dumps(payload).encode()).decode()
+        signature = private_key.sign(payload_b64.encode())
+        signature_b64 = base64.b64encode(signature).decode()
+        lic_key = f"{payload_b64}.{signature_b64}"
+        
+        async with SessionLocal() as session:
+            l = ClientLicense(
+                client_name=data.client_name, license_key=lic_key, 
+                plan=data.plan, expires_at=datetime.fromisoformat(expires)
+            )
+            session.add(l); await session.commit()
+            return {"status": "ok", "license_key": lic_key}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.patch("/api/admin/licenses/{lic_id}/toggle")
+async def toggle_license(lic_id: int, _=Depends(get_current_owner)):
+    async with SessionLocal() as session:
+        l = (await session.execute(select(ClientLicense).where(ClientLicense.id == lic_id))).scalar_one_or_none()
+        if not l: raise HTTPException(status_code=404)
+        l.is_active = not l.is_active; await session.commit()
+        return {"status": "ok", "is_active": l.is_active}
+
+@app.delete("/api/admin/licenses/{lic_id}")
+async def delete_license(lic_id: int, _=Depends(get_current_owner)):
+    async with SessionLocal() as session:
+        l = (await session.execute(select(ClientLicense).where(ClientLicense.id == lic_id))).scalar_one_or_none()
+        if not l: raise HTTPException(status_code=404)
+        await session.delete(l); await session.commit()
+        return {"status": "ok"}
+
+# --- ОСТАЛЬНЫЕ ЭНДПОИНТЫ ---
+@app.get("/api/license/info")
+async def get_license_info(_=Depends(get_current_admin)):
+    return license_info.to_dict()
+
 @app.get("/api/status")
 async def get_status(_=Depends(get_current_admin)):
     async with SessionLocal() as session:
         s = (await session.execute(select(AppSettings).where(AppSettings.id == 1))).scalar_one_or_none()
-        now = datetime.now(timezone.utc)
+        naive_now = datetime.now(timezone.utc).replace(tzinfo=None)
         bot_online = False; collector_online = False
         if s:
-            if s.bot_last_seen and (now - s.bot_last_seen).total_seconds() < 30: bot_online = True
-            if s.collector_last_seen and (now - s.collector_last_seen).total_seconds() < 30: collector_online = True
+            if s.bot_last_seen and (naive_now - s.bot_last_seen).total_seconds() < 30: bot_online = True
+            if s.collector_last_seen and (naive_now - s.collector_last_seen).total_seconds() < 30: collector_online = True
         return {"bot_online": bot_online, "collector_online": collector_online}
 
-# --- ИИ ---
-class AITextRequest(BaseModel):
-    text: str
-    word_count: int | None = None
-
-class AIGenerateRequest(BaseModel):
-    prompt: str
-    base_text: str | None = None
-
+class AITextRequest(BaseModel): text: str; word_count: int | None = None
+class AIGenerateRequest(BaseModel): prompt: str; base_text: str | None = None
 class AIImageRequest(BaseModel):
-    prompt: str
-    post_id: int | None = None
-    width: int = 1024
-    height: int = 1024
-    model: str = "flux"
-    seed: int | None = None
-    nologo: bool = True
+    prompt: str; post_id: int | None = None; width: int = 1024; height: int = 1024; model: str = "flux"; seed: int | None = None; nologo: bool = True
 
 @app.post("/api/ai/translate")
 async def api_translate(data: AITextRequest, _=Depends(get_current_admin)):
+    check_ai_enabled()
     try: return {"result": translate_text(data.text)}
     except Exception as e: raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/api/ai/rewrite")
 async def api_rewrite(data: AITextRequest, _=Depends(get_current_admin)):
+    check_ai_enabled()
     try: return {"result": rewrite_text(data.text, data.word_count)}
     except Exception as e: raise HTTPException(status_code=500, detail=str(e))
 
@@ -100,32 +163,22 @@ async def api_remove_links(data: AITextRequest, _=Depends(get_current_admin)):
 
 @app.post("/api/ai/generate")
 async def api_generate(data: AIGenerateRequest, _=Depends(get_current_admin)):
-    try: 
-        result = generate_text(data.prompt, data.base_text or "")
-        return {"result": result}
-    except Exception as e: 
-        raise HTTPException(status_code=500, detail=str(e))
+    check_ai_enabled()
+    try: return {"result": generate_text(data.prompt, data.base_text or "")}
+    except Exception as e: raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/api/ai/image-models")
 async def api_image_models(_=Depends(get_current_admin)):
-    try:
-        return {"models": list_image_models()}
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+    check_image_gen()
+    try: return {"models": list_image_models()}
+    except Exception as e: raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/api/ai/generate-image")
 async def api_generate_image(data: AIImageRequest, _=Depends(get_current_admin)):
+    check_image_gen()
     try:
-        image_bytes = generate_image(
-            data.prompt,
-            width=data.width,
-            height=data.height,
-            model=data.model,
-            seed=data.seed,
-            nologo=data.nologo,
-        )
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Ошибка генерации: {str(e)}")
+        image_bytes = generate_image(data.prompt, width=data.width, height=data.height, model=data.model, seed=data.seed, nologo=data.nologo)
+    except Exception as e: raise HTTPException(status_code=500, detail=f"Ошибка генерации: {str(e)}")
 
     if not data.post_id:
         key = f"library/ai_{uuid.uuid4().hex[:8]}.jpg"
@@ -137,18 +190,16 @@ async def api_generate_image(data: AIImageRequest, _=Depends(get_current_admin))
 
     async with SessionLocal() as session:
         post = (await session.execute(select(Post).where(Post.id == data.post_id).options(selectinload(Post.media)))).scalar_one_or_none()
-        if not post: raise HTTPException(status_code=404, detail="Пост не найден")
+        if not post: raise HTTPException(status_code=404)
         minio_key = f"user/{data.post_id}_ai_{uuid.uuid4().hex[:6]}.jpg"
         get_minio().upload_bytes(minio_key, image_bytes, content_type="image/jpeg", tags={"keep": "true"})
         pm = PostMedia(post_id=post.id, minio_key=minio_key, media_type="photo", order=len(post.media), is_user_added=True)
         session.add(pm); await session.commit()
         return {"status": "ok", "media_id": pm.id, "minio_key": minio_key}
 
-# --- АВТОРИЗАЦИЯ ---
 class TelegramAuthData(BaseModel):
     id: int; first_name: str | None = None; last_name: str | None = None; username: str | None = None; photo_url: str | None = None; auth_date: int; hash: str
-class DevLoginData(BaseModel):
-    password: str
+class DevLoginData(BaseModel): password: str
 
 @app.post("/api/auth/telegram")
 async def telegram_auth(data: TelegramAuthData):
@@ -165,24 +216,23 @@ async def dev_auth(data: DevLoginData):
     if data.password == settings.jwt_secret: return {"token": create_access_token({"sub": str(settings.admin_telegram_id)})}
     raise HTTPException(status_code=401, detail="Wrong password")
 
-# --- ИСТОЧНИКИ ---
 @app.get("/api/sources")
 async def get_sources(_=Depends(get_current_admin)):
     async with SessionLocal() as session:
         result = await session.execute(select(Source).options(selectinload(Source.templates).selectinload(SourceTemplate.template)).order_by(Source.id))
-        return [{
-            "id": s.id, "telegram_id": s.telegram_id, "title": s.title, "username": s.username, "enabled": s.enabled, 
-            "auto_publish": s.auto_publish, "auto_template_id": s.auto_template_id,
-            "templates": [{"id": st.template.id, "name": st.template.name} for st in s.templates]
-        } for s in result.scalars().all()]
+        return [{"id": s.id, "telegram_id": s.telegram_id, "title": s.title, "username": s.username, "enabled": s.enabled, "auto_publish": s.auto_publish, "auto_template_id": s.auto_template_id, "templates": [{"id": st.template.id, "name": st.template.name} for st in s.templates]} for s in result.scalars().all()]
 
-class SourceCreate(BaseModel):
-    channel_input: str
+class SourceCreate(BaseModel): channel_input: str
 
 @app.post("/api/sources")
 async def add_source(data: SourceCreate, _=Depends(get_current_admin)):
-    clean_input = data.channel_input.strip()
-    is_numeric_id = False
+    max_sources = license_info.get("max_sources", 5)
+    if max_sources != -1:
+        async with SessionLocal() as session:
+            count = await session.scalar(select(func.count(Source.id)))
+            if count >= max_sources: raise HTTPException(status_code=403, detail=f"Достигнут лимит источников для тарифа '{license_info.plan}' ({max_sources}).")
+    
+    clean_input = data.channel_input.strip(); is_numeric_id = False
     if clean_input.startswith('-100') and clean_input[1:].isdigit(): is_numeric_id = True; telegram_id = int(clean_input)
     elif clean_input.isdigit(): is_numeric_id = True; telegram_id = int(clean_input)
 
@@ -211,17 +261,14 @@ async def toggle_source(source_id: int, _=Depends(get_current_admin)):
         if not source: raise HTTPException(status_code=404)
         source.enabled = not source.enabled; await session.commit(); return {"status": "ok", "enabled": source.enabled}
 
-class AutoPublishUpdate(BaseModel):
-    auto_publish: bool
-    auto_template_id: int | None = None
+class AutoPublishUpdate(BaseModel): auto_publish: bool; auto_template_id: int | None = None
 
 @app.patch("/api/sources/{source_id}/auto-publish")
 async def update_auto_publish(source_id: int, data: AutoPublishUpdate, _=Depends(get_current_admin)):
     async with SessionLocal() as session:
         source = (await session.execute(select(Source).where(Source.id == source_id))).scalar_one_or_none()
         if not source: raise HTTPException(status_code=404)
-        source.auto_publish = data.auto_publish
-        source.auto_template_id = data.auto_template_id
+        source.auto_publish = data.auto_publish; source.auto_template_id = data.auto_template_id
         await session.commit(); return {"status": "ok"}
 
 @app.delete("/api/sources/{source_id}")
@@ -231,8 +278,7 @@ async def delete_source(source_id: int, _=Depends(get_current_admin)):
         if not source: raise HTTPException(status_code=404)
         await session.delete(source); await session.commit(); return {"status": "ok"}
 
-class AttachSourceTemplate(BaseModel):
-    template_id: int
+class AttachSourceTemplate(BaseModel): template_id: int
 
 @app.post("/api/sources/{source_id}/templates")
 async def attach_source_template(source_id: int, data: AttachSourceTemplate, _=Depends(get_current_admin)):
@@ -247,7 +293,6 @@ async def detach_source_template(source_id: int, template_id: int, _=Depends(get
         if st: await session.delete(st); await session.commit()
         return {"status": "ok"}
 
-# --- ЗАГРУЗКА (ОБЩАЯ) ---
 @app.post("/api/upload")
 async def upload_generic_media(file: UploadFile = File(...), _=Depends(get_current_admin)):
     data = await file.read(); ext = file.filename.split('.')[-1].lower() if file.filename and '.' in file.filename else "jpg"
@@ -256,7 +301,6 @@ async def upload_generic_media(file: UploadFile = File(...), _=Depends(get_curre
     get_minio().upload_bytes(key, data, content_type=file.content_type or "image/jpeg", tags={"keep": "true"})
     return {"key": key, "type": "video" if ext == "mp4" else "photo"}
 
-# --- МЕДИА-БИБЛИОТЕКА ---
 @app.get("/api/media-library")
 async def get_media_library(_=Depends(get_current_admin)):
     async with SessionLocal() as session:
@@ -277,11 +321,9 @@ async def upload_to_library(file: UploadFile = File(...), _=Depends(get_current_
 async def save_to_library(post_id: int, media_id: int, _=Depends(get_current_admin)):
     async with SessionLocal() as session:
         pm = (await session.execute(select(PostMedia).where(PostMedia.id == media_id, PostMedia.post_id == post_id))).scalar_one_or_none()
-        if not pm: raise HTTPException(status_code=404, detail="Медиа поста не найдено")
-        try:
-            data = get_minio().download_bytes(pm.minio_key)
-        except Exception:
-            raise HTTPException(status_code=404, detail="Файл физически отсутствует в хранилище")
+        if not pm: raise HTTPException(status_code=404)
+        try: data = get_minio().download_bytes(pm.minio_key)
+        except Exception: raise HTTPException(status_code=404)
         ext = pm.minio_key.rsplit(".", 1)[-1].lower() if "." in pm.minio_key else "jpg"
         new_key = f"library/{uuid.uuid4().hex[:8]}.{ext}"
         get_minio().upload_bytes(new_key, data, tags={"keep": "true"})
@@ -305,7 +347,6 @@ async def delete_from_library(lib_id: int, _=Depends(get_current_admin)):
         if not lib: raise HTTPException(status_code=404)
         get_minio().delete(lib.minio_key); await session.delete(lib); await session.commit(); return {"status": "ok"}
 
-# --- ПОСТЫ ---
 @app.get("/")
 def read_root(): return {"status": "ok"}
 
@@ -325,48 +366,20 @@ async def create_manual_post(_=Depends(get_current_admin)):
             source = (await session.execute(select(Source).where(Source.username == "manual"))).scalar_one_or_none()
             if not source:
                 source = Source(telegram_id=-999999999, title="Ручной пост", username="manual", enabled=False)
-                session.add(source)
-                await session.commit()
-                await session.refresh(source)
-
+                session.add(source); await session.commit(); await session.refresh(source)
             msg_id = -int(time.time() * 1000) - int(uuid.uuid4().int % 1000)
-
-            post = Post(
-                source_id=source.id,
-                source_message_id=msg_id,
-                original_text="",
-                status=PostStatus.NEW,
-                notified=True
-            )
-            session.add(post)
-            await session.commit()
-            await session.refresh(post)
+            post = Post(source_id=source.id, source_message_id=msg_id, original_text="", status=PostStatus.NEW, notified=True)
+            session.add(post); await session.commit(); await session.refresh(post)
             return {"status": "ok", "id": post.id}
-            
-        except Exception as e:
-            await session.rollback()
-            print(f"ERROR CREATING MANUAL POST: {e}")
-            raise HTTPException(status_code=500, detail=str(e))
+        except Exception as e: await session.rollback(); raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/api/posts/{post_id}")
 async def get_single_post(post_id: int, _=Depends(get_current_admin)):
     async with SessionLocal() as session:
-        result = await session.execute(
-            select(Post).where(Post.id == post_id).options(
-                selectinload(Post.source), selectinload(Post.media),
-                selectinload(Post.templates).selectinload(PostTemplate.template)
-            )
-        )
+        result = await session.execute(select(Post).where(Post.id == post_id).options(selectinload(Post.source), selectinload(Post.media), selectinload(Post.templates).selectinload(PostTemplate.template)))
         p = result.scalar_one_or_none()
         if not p: raise HTTPException(status_code=404)
-        return {
-            "id": p.id, "source": p.source.username if p.source else None,
-            "text": p.edited_text or p.original_text, "status": p.status,
-            "media_count": len(p.media),
-            "media": [{"id": m.id, "type": m.media_type, "key": m.minio_key} for m in p.media],
-            "templates": [{"id": pt.template.id, "name": pt.template.name, "mode": pt.mode or pt.template.attach_mode} for pt in p.templates],
-            "buttons_json": p.buttons_json
-        }
+        return {"id": p.id, "source": p.source.username if p.source else None, "text": p.edited_text or p.original_text, "status": p.status, "media_count": len(p.media), "media": [{"id": m.id, "type": m.media_type, "key": m.minio_key} for m in p.media], "templates": [{"id": pt.template.id, "name": pt.template.name, "mode": pt.mode or pt.template.attach_mode} for pt in p.templates], "buttons_json": p.buttons_json}
 
 @app.post("/api/posts/{post_id}/approve")
 async def approve_post(post_id: int, _=Depends(get_current_admin)):
@@ -394,7 +407,7 @@ async def delete_post(post_id: int, _=Depends(get_current_admin)):
     async with SessionLocal() as session:
         post = (await session.execute(select(Post).where(Post.id == post_id))).scalar_one_or_none()
         if not post: raise HTTPException(status_code=404)
-        post.status = PostStatus.DELETED; post.deleted_at = datetime.now(timezone.utc)
+        post.status = PostStatus.DELETED; post.deleted_at = datetime.now(timezone.utc).replace(tzinfo=None)
         await session.commit(); return {"status": "ok"}
 
 @app.post("/api/posts/{post_id}/restore")
@@ -425,9 +438,7 @@ async def empty_trash(_=Depends(get_current_admin)):
             await session.delete(post)
         await session.commit(); return {"status": "ok"}
 
-class PostUpdate(BaseModel):
-    text: str
-    buttons_json: list | None = None
+class PostUpdate(BaseModel): text: str; buttons_json: list | None = None
 
 @app.patch("/api/posts/{post_id}")
 async def update_post_text(post_id: int, data: PostUpdate, _=Depends(get_current_admin)):
@@ -457,9 +468,7 @@ async def delete_media(media_id: int, _=Depends(get_current_admin)):
         if not media: raise HTTPException(status_code=404)
         get_minio().delete(media.minio_key); await session.delete(media); await session.commit(); return {"status": "ok"}
 
-# --- ПАПКИ ШАБЛОНОВ ---
-class FolderCreate(BaseModel):
-    name: str
+class FolderCreate(BaseModel): name: str
 
 @app.get("/api/template-folders")
 async def get_folders(_=Depends(get_current_admin)):
@@ -478,7 +487,6 @@ async def delete_folder(folder_id: int, _=Depends(get_current_admin)):
         if not f: raise HTTPException(status_code=404)
         await session.delete(f); await session.commit(); return {"status": "ok"}
 
-# --- ШАБЛОНЫ ---
 class TemplateCreate(BaseModel):
     name: str; text: str; attach_mode: str; folder_id: int | None = None; media_json: list | None = None; buttons_json: list | None = None
 
@@ -509,20 +517,16 @@ async def delete_template(template_id: int, _=Depends(get_current_admin)):
         if not t: raise HTTPException(status_code=404)
         await session.delete(t); await session.commit(); return {"status": "ok"}
 
-class AttachTemplate(BaseModel):
-    template_id: int; mode: str
+class AttachTemplate(BaseModel): template_id: int; mode: str
 
 @app.post("/api/posts/{post_id}/templates")
 async def attach_template(post_id: int, data: AttachTemplate, _=Depends(get_current_admin)):
     async with SessionLocal() as session:
         stmt = select(PostTemplate).where(PostTemplate.post_id == post_id, PostTemplate.template_id == data.template_id)
         pt = (await session.execute(stmt)).scalar_one_or_none()
-        if pt:
-            pt.mode = data.mode
-        else:
-            session.add(PostTemplate(post_id=post_id, template_id=data.template_id, position=0, mode=data.mode))
-        await session.commit()
-        return {"status": "ok"}
+        if pt: pt.mode = data.mode
+        else: session.add(PostTemplate(post_id=post_id, template_id=data.template_id, position=0, mode=data.mode))
+        await session.commit(); return {"status": "ok"}
 
 @app.delete("/api/posts/{post_id}/templates/{template_id}")
 async def detach_template(post_id: int, template_id: int, _=Depends(get_current_admin)):
@@ -547,7 +551,6 @@ async def get_metrics(_=Depends(get_current_admin)):
         sources_stats.sort(key=lambda x: x["efficiency"], reverse=True)
         return {"summary": {"total": total, "published": published, "deleted": deleted, "pending": pending}, "sources": sources_stats}
 
-# --- ОЧИСТКА КАНАЛА ---
 @app.post("/api/target-channel/clear")
 async def clear_target_channel_endpoint(_=Depends(get_current_admin)):
     success, msg = await clear_target_channel()

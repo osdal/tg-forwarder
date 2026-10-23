@@ -59,14 +59,14 @@ def build_caption(post: Post, media_count: int) -> str:
 async def heartbeat() -> None:
     while True:
         try:
+            naive_now = datetime.now(timezone.utc).replace(tzinfo=None)
             async with SessionLocal() as session:
                 stmt = pg_insert(AppSettings).values(
                     id=1, 
-                    admin_telegram_id=settings.admin_telegram_id,
-                    bot_last_seen=datetime.now(timezone.utc)
+                    bot_last_seen=naive_now
                 ).on_conflict_do_update(
                     index_elements=[AppSettings.id],
-                    set_={"bot_last_seen": datetime.now(timezone.utc)}
+                    set_={"bot_last_seen": naive_now}
                 )
                 await session.execute(stmt)
                 await session.commit()
@@ -102,9 +102,9 @@ async def poll_new_posts() -> None:
 async def poll_scheduled_posts() -> None:
     while True:
         try:
-            now = datetime.now(timezone.utc)
+            naive_now = datetime.now(timezone.utc).replace(tzinfo=None)
             async with SessionLocal() as session:
-                result = await session.execute(select(Post).where(Post.status == PostStatus.SCHEDULED, Post.publish_at <= now).limit(5))
+                result = await session.execute(select(Post).where(Post.status == PostStatus.SCHEDULED, Post.publish_at <= naive_now).limit(5))
                 for post in list(result.scalars()):
                     success, err = await publish_post_to_channel(post.id)
                     if success:
@@ -118,9 +118,9 @@ async def poll_scheduled_posts() -> None:
 async def poll_cleanup_trash() -> None:
     while True:
         try:
-            cutoff = datetime.now(timezone.utc) - timedelta(days=3)
+            naive_cutoff = (datetime.now(timezone.utc) - timedelta(days=3)).replace(tzinfo=None)
             async with SessionLocal() as session:
-                result = await session.execute(select(Post).where(Post.status == PostStatus.DELETED, Post.deleted_at <= cutoff).options(selectinload(Post.media)))
+                result = await session.execute(select(Post).where(Post.status == PostStatus.DELETED, Post.deleted_at <= naive_cutoff).options(selectinload(Post.media)))
                 posts = list(result.scalars())
                 if posts:
                     log.info("🧹 Очистка корзины: удаляю %s старых постов", len(posts))
@@ -173,7 +173,7 @@ async def cb_delete(callback: CallbackQuery) -> None:
         post = (await session.execute(select(Post).where(Post.id == post_id))).scalar_one_or_none()
         if post:
             post.status = PostStatus.DELETED
-            post.deleted_at = datetime.now(timezone.utc)
+            post.deleted_at = datetime.now(timezone.utc).replace(tzinfo=None)
             await session.commit()
             await callback.answer(f"🗑 Перемещено в корзину")
             try:
@@ -321,7 +321,7 @@ async def process_schedule_time(message: Message, state: FSMContext) -> None:
         async with SessionLocal() as session:
             post = (await session.execute(select(Post).where(Post.id == post_id))).scalar_one_or_none()
             if post:
-                post.status = PostStatus.SCHEDULED; post.publish_at = target_dt.astimezone(timezone.utc)
+                post.status = PostStatus.SCHEDULED; post.publish_at = target_dt.astimezone(timezone.utc).replace(tzinfo=None)
                 await session.commit()
                 await message.answer(f"🕒 Пост отложен на {target_dt.strftime('%Y-%m-%d %H:%M')}.", reply_markup=None)
     except ValueError: return await message.answer("❌ Неверный формат.")
