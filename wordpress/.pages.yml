@@ -8,50 +8,147 @@ content:
     type: file
     path: landing/data.json
     fields:
-      - name: font_family
-        label: "Шрифт сайта"
-        type: select
-        options:
-          values:
-            - name: inter
-              label: "Inter (современный)"
-            - name: arial
-              label: "Arial (классический)"
-            - name: georgia
-              label: "Georgia (с засечками)"
-            - name: verdana
-              label: "Verdana (широкий)"
-      - name: font_size
-        label: "Размер шрифта"
-        type: select
-        options:
-          values:
-            - name: small
-              label: "Маленький"
-            - name: medium
-              label: "Средний (по умолчанию)"
-            - name: large
-              label: "Большой"
-      - name: hero_title
-        label: "Главный заголовок"
-        type: string
-      - name: hero_subtitle
-        label: "Подзаголовок (описание)"
-        type: text
-      - name: hero_btn_text
-        label: "Текст кнопки (Скачать)"
-        type: string
-      - name: features
-        label: "Блоки с возможностями"
+      # --- МЕНЮ ---
+      - name: nav_links
+        label: "🔗 Ссылки в верхнем меню"
         type: object
         list: true
         fields:
-          - name: icon
-            label: "Иконка (эмодзи)"
-            type: string
-          - name: title
-            label: "Заголовок блока"
-            type: string
-          - name: description
-            label: "Описание блока"
-            type: text
+          - { name: name, label: "Название", type: string }
+          - { name: url, label: "Ссылка (#features, #faq)", type: string }
+
+      # --- КОНТАКТЫ ---
+      - name: contact_telegram
+        label: "📱 Telegram для связи (без @)"
+        type: string
+      - name: contact_email
+        label: "📧 Email для связи"
+        type: string
+      - name: contact_whatsapp
+        label: "💬 WhatsApp (в формате +380...)"
+        type: string
+
+      # --- ФОН ---
+      - name: bg_color
+        label: "🎨 Цвет фона"
+        type: select
+        options:
+          values:
+            - { name: "#0a0a0a", label: "Черный" }
+            - { name: "#ffffff", label: "Белый" }
+            - { name: "#0f172a", label: "Темно-синий" }
+
+      # --- ЗАГОЛОВОК ---
+      - name: hero_title
+        label: "1. Заголовок"
+        type: string
+      - name: hero_title_color
+        label: "1. Заголовок (Цвет)"
+        type: select
+        options:
+          values:
+            - { name: "#ffffff", label: "Белый" }
+            - { name: "#000000", label: "Черный" }
+            - { name: "#3b82f6", label: "Синий" }
+      - name: hero_title_size
+        label: "1. Заголовок (Размер)"
+        type: select
+        options:
+          values:
+            - { name: "text-4xl md:text-5xl", label: "Средний" }
+            - { name: "text-5xl md:text-7xl", label: "Большой" }
+      - name: hero_title_weight
+        label: "1. Заголовок (Жирность)"
+        type: select
+        options:
+          values:
+            - { name: "font-bold", label: "Жирный" }
+            - { name: "font-extrabold", label: "Очень жирный" }
+      - name: hero_title_font
+        label: "1. Заголовок (Шрифт)"
+        type: select
+        options:
+          values:
+            - { name: "font-sans", label: "Без засечек" }
+            - { name: "font-serif", label: "С засечками" }
+
+      # --- ПОДЗАГОЛОВОК ---
+      - name: hero_subtitle
+        label: "2. Подзаголовок"
+        type: text
+      - name: hero_subtitle_color
+        label: "2. Подзаголовок (Цвет)"
+        type: select
+        options:
+          values:
+            - { name: "#9ca3af", label: "Серый" }
+            - { name: "#4b5563", label: "Темно-серый" }
+      - name: hero_subtitle_size
+        label: "2. Подзаголовок (Размер)"
+        type: select
+        options:
+          values:
+            - { name: "text-lg", label: "Маленький" }
+            - { name: "text-xl", label: "Средний" }
+      - name: hero_subtitle_font
+        label: "2. Подзаголовок (Шрифт)"
+        type: select
+        options:
+          values:
+            - { name: "font-sans", label: "Без засечек" }
+            - { name: "font-serif", label: "С засечками" }
+
+      - name: hero_btn_text
+        label: "3. Текст кнопки"
+        type: string
+
+      # --- ВОЗМОЖНОСТИ ---
+      - name: features_title_color
+        label: "4. Заголовок возможностей (Цвет)"
+        type: select
+        options:
+          values:
+            - { name: "#ffffff", label: "Белый" }
+            - { name: "#000000", label: "Черный" }
+      - name: features_subtitle_color
+        label: "5. Подзаголовок возможностей (Цвет)"
+        type: select
+        options:
+          values:
+            - { name: "#9ca3af", label: "Серый" }
+            - { name: "#4b5563", label: "Темно-серый" }
+      - name: card_title_color
+        label: "6. Заголовки карточек (Цвет)"
+        type: select
+        options:
+          values:
+            - { name: "#ffffff", label: "Белый" }
+            - { name: "#000000", label: "Черный" }
+      - name: card_desc_color
+        label: "7. Описания карточек (Цвет)"
+        type: select
+        options:
+          values:
+            - { name: "#9ca3af", label: "Серый" }
+            - { name: "#4b5563", label: "Темно-серый" }
+
+      - name: features
+        label: "8. Блоки с возможностями"
+        type: object
+        list: true
+        fields:
+          - { name: icon, label: "Иконка", type: string }
+          - { name: title, label: "Заголовок", type: string }
+          - { name: description, label: "Описание", type: text }
+
+      # --- FAQ ---
+      - name: faq_title
+        label: "9. Заголовок FAQ"
+        type: string
+      - name: faq_items
+        label: "10. Вопросы и ответы"
+        type: object
+        list: true
+        fields:
+          - { name: question, label: "Вопрос", type: string }
+          - { name: answer, label: "Ответ", type: text }

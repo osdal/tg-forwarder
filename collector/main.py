@@ -15,6 +15,7 @@ from shared.models import Post, PostMedia, PostStatus, Source, AppSettings, Post
 from shared.storage import save_telethon_media
 from shared.telegram_utils import detect_media_type_from_telethon
 from shared.publisher import publish_post_to_channel
+from shared.pipeline import apply_pipeline # НОВЫЙ ИМПОРТ
 
 # ============ Логирование ============
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(name)s: %(message)s")
@@ -81,12 +82,39 @@ async def save_messages_as_post(source: Source, messages: list, grouped_id: int 
         except Exception as e:
             log.exception("   ❌ Ошибка сохранения медиа msg=%s: %s", msg.id, e)
 
+    # Получаем ключ Gemini из настроек
     async with SessionLocal() as session:
-        post = Post(source_id=source.id, source_message_id=first.id, source_grouped_id=grouped_id, original_text=first.message or None, status=PostStatus.NEW)
+        app_settings = (await session.execute(select(AppSettings).where(AppSettings.id == 1))).scalar_one_or_none()
+        gemini_key = app_settings.gemini_api_key if app_settings else None
+
+    # Применяем цепочку
+    original_text = first.message or ""
+    log.info("   🧠 Применяю цепочку шагов (pipeline)...")
+    new_text, new_media = apply_pipeline(original_text, source.pipeline_json, api_key=gemini_key)
+
+    async with SessionLocal() as session:
+        # Сохраняем пост с уже обработанным текстом
+        post = Post(
+            source_id=source.id, 
+            source_message_id=first.id, 
+            source_grouped_id=grouped_id, 
+            original_text=first.message or None, 
+            edited_text=new_text if new_text != original_text else None, # Если текст не изменился, оставляем None
+            pipeline_applied=True,
+            status=PostStatus.NEW
+        )
         session.add(post)
         await session.flush()
+        
+        # Добавляем оригинальные медиа
         for s in stored_media:
             session.add(PostMedia(post_id=post.id, minio_key=s.minio_key, media_type=s.media_type, order=s.order, caption=s.caption, is_user_added=False))
+        
+        # Добавляем медиа, сгенерированные цепочкой
+        for m in new_media:
+            # Ищем следующий порядковый номер
+            next_order = len(stored_media) + new_media.index(m)
+            session.add(PostMedia(post_id=post.id, minio_key=m["key"], media_type=m["type"], order=next_order, is_user_added=True))
         
         # АВТО-ПУБЛИКАЦИЯ
         if source.auto_publish:

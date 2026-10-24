@@ -11,21 +11,23 @@ import json
 from datetime import datetime, timedelta, timezone
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 
-from fastapi import FastAPI, HTTPException, File, UploadFile, Depends
+from fastapi import FastAPI, HTTPException, File, UploadFile, Depends, Header
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
+from fastapi.responses import FileResponse
 from pydantic import BaseModel
 from sqlalchemy import select, func, case
 from sqlalchemy.orm import selectinload
 from telethon import TelegramClient
 from telethon.sessions import StringSession
 
-from shared.config import get_settings, license_info, DEFAULT_PLANS
+from shared.config import get_settings, license_info, LicenseInfo, DEFAULT_PLANS
 from shared.db import SessionLocal
 from shared.models import Post, PostStatus, PostMedia, Template, PostTemplate, TemplateFolder, Source, SourceTemplate, MediaLibrary, AppSettings, ClientLicense
 from shared.publisher import publish_post_to_channel
 from shared.minio_client import get_minio
 from shared.ai_helper import translate_text, rewrite_text, generate_text, generate_image, list_image_models
+from shared.pipeline import apply_pipeline
 from shared.text_utils import remove_links
 from scripts.refetch_media import refetch_post_media
 from scripts.clear_target_channel import clear_target_channel
@@ -47,18 +49,100 @@ def get_current_admin(credentials: HTTPAuthorizationCredentials = Depends(securi
         return payload
     except jwt.PyJWTError: raise HTTPException(status_code=401, detail="Invalid token")
 
-def get_current_owner(_=Depends(get_current_admin)):
-    if license_info.plan != "owner":
+def get_effective_license(x_view_as: str | None = None) -> LicenseInfo:
+    if license_info.plan == "owner" and x_view_as in DEFAULT_PLANS:
+        return LicenseInfo(f"Owner (View As {x_view_as})", datetime.now() + timedelta(days=1), x_view_as, DEFAULT_PLANS[x_view_as])
+    return license_info
+
+def get_current_owner(x_view_as: str = Header(None), _=Depends(get_current_admin)):
+    lic = get_effective_license(x_view_as)
+    if lic.plan != "owner":
         raise HTTPException(status_code=403, detail="Доступно только для владельца.")
     return True
 
-def check_ai_enabled():
-    if not license_info.get("ai_enabled"):
+def check_ai_enabled(lic: LicenseInfo):
+    if not lic.get("ai_enabled"):
         raise HTTPException(status_code=403, detail="AI-функции недоступны в вашем тарифе.")
 
-def check_image_gen():
-    if not license_info.get("image_gen_enabled"):
+def check_image_gen(lic: LicenseInfo):
+    if not lic.get("image_gen_enabled"):
         raise HTTPException(status_code=403, detail="Генерация картинок недоступна в вашем тарифе.")
+
+# --- НАСТРОЙКИ И КЛЮЧ GEMINI ---
+class GeminiKeyUpdate(BaseModel):
+    api_key: str
+
+class GeminiTestRequest(BaseModel):
+    api_key: str
+
+@app.get("/api/settings")
+async def get_settings_api(_=Depends(get_current_admin)):
+    async with SessionLocal() as session:
+        s = (await session.execute(select(AppSettings).where(AppSettings.id == 1))).scalar_one_or_none()
+        return {"gemini_api_key": s.gemini_api_key if s else ""}
+
+@app.post("/api/settings/gemini")
+async def save_gemini_key(data: GeminiKeyUpdate, _=Depends(get_current_admin)):
+    async with SessionLocal() as session:
+        s = (await session.execute(select(AppSettings).where(AppSettings.id == 1))).scalar_one_or_none()
+        if not s:
+            s = AppSettings(id=1, gemini_api_key=data.api_key)
+            session.add(s)
+        else:
+            s.gemini_api_key = data.api_key
+        await session.commit()
+    return {"status": "ok"}
+
+@app.post("/api/settings/gemini/test")
+async def test_gemini_key(data: GeminiTestRequest, _=Depends(get_current_admin)):
+    try:
+        res = translate_text("Hello, world!", api_key=data.api_key)
+        return {"status": "ok", "message": f"Ключ работает. Тестовый перевод: {res}"}
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+# --- ЦЕПОЧКИ (PIPELINE) ---
+class PipelineUpdate(BaseModel):
+    steps: list
+
+@app.patch("/api/sources/{source_id}/pipeline")
+async def update_source_pipeline(source_id: int, data: PipelineUpdate, _=Depends(get_current_admin)):
+    async with SessionLocal() as session:
+        source = (await session.execute(select(Source).where(Source.id == source_id))).scalar_one_or_none()
+        if not source: raise HTTPException(status_code=404, detail="Источник не найден")
+        source.pipeline_json = json.dumps(data.steps)
+        await session.commit()
+    return {"status": "ok"}
+
+@app.post("/api/posts/{post_id}/run-pipeline")
+async def run_post_pipeline(post_id: int, x_view_as: str = Header(None), _=Depends(get_current_admin)):
+    lic = get_effective_license(x_view_as)
+    async with SessionLocal() as session:
+        post = (await session.execute(select(Post).where(Post.id == post_id).options(selectinload(Post.source), selectinload(Post.media)))).scalar_one_or_none()
+        if not post: raise HTTPException(status_code=404, detail="Пост не найден")
+        
+        app_settings = (await session.execute(select(AppSettings).where(AppSettings.id == 1))).scalar_one_or_none()
+        gemini_key = app_settings.gemini_api_key if app_settings else None
+        
+        source = post.source
+        current_text = post.edited_text or post.original_text or ""
+        
+        new_text, new_media = apply_pipeline(
+            current_text, 
+            source.pipeline_json, 
+            api_key=gemini_key, 
+            ai_enabled=lic.get("ai_enabled", False)
+        )
+        
+        post.edited_text = new_text
+        post.pipeline_applied = True
+        
+        start_order = len(post.media)
+        for i, m in enumerate(new_media):
+            session.add(PostMedia(post_id=post.id, minio_key=m["key"], media_type=m["type"], order=start_order + i, is_user_added=True))
+            
+        await session.commit()
+        return {"status": "ok"}
 
 # --- УПРАВЛЕНИЕ ЛИЦЕНЗИЯМИ (ТОЛЬКО ДЛЯ OWNER) ---
 class LicenseCreate(BaseModel):
@@ -66,46 +150,37 @@ class LicenseCreate(BaseModel):
     plan: str
     days: int
 
+@app.get("/api/admin/download-latest")
+async def download_latest(_=Depends(get_current_owner)):
+    file_path = "/app/landing/latest.zip"
+    if not os.path.exists(file_path):
+        raise HTTPException(status_code=404, detail="Архив ещё не собран.")
+    return FileResponse(path=file_path, filename="tg-forwarder.zip", media_type="application/zip")
+
 @app.get("/api/admin/licenses")
 async def get_licenses(_=Depends(get_current_owner)):
     async with SessionLocal() as session:
         result = await session.execute(select(ClientLicense).order_by(ClientLicense.id.desc()))
-        return [{
-            "id": l.id, "client_name": l.client_name, "plan": l.plan, 
-            "expires_at": l.expires_at.isoformat(), "is_active": l.is_active,
-            "license_key": l.license_key
-        } for l in result.scalars().all()]
+        return [{"id": l.id, "client_name": l.client_name, "plan": l.plan, "expires_at": l.expires_at.isoformat(), "is_active": l.is_active, "license_key": l.license_key} for l in result.scalars().all()]
 
 @app.post("/api/admin/licenses")
 async def create_license(data: LicenseCreate, _=Depends(get_current_owner)):
-    if not settings.license_private_key:
-        raise HTTPException(status_code=500, detail="Приватный ключ не настроен на сервере.")
-    if data.plan not in DEFAULT_PLANS:
-        raise HTTPException(status_code=400, detail="Неверный тариф.")
-    
+    if not settings.license_private_key: raise HTTPException(status_code=500, detail="Приватный ключ не настроен.")
+    if data.plan not in DEFAULT_PLANS: raise HTTPException(status_code=400, detail="Неверный тариф.")
     try:
         private_key = Ed25519PrivateKey.from_private_bytes(base64.b64decode(settings.license_private_key))
         expires = (datetime.now() + timedelta(days=data.days)).isoformat()
-        payload = {
-            "client": data.client_name,
-            "expires": expires,
-            "plan": data.plan,
-            "limits": DEFAULT_PLANS[data.plan]
-        }
+        payload = {"client": data.client_name, "expires": expires, "plan": data.plan, "limits": DEFAULT_PLANS[data.plan]}
         payload_b64 = base64.b64encode(json.dumps(payload).encode()).decode()
         signature = private_key.sign(payload_b64.encode())
         signature_b64 = base64.b64encode(signature).decode()
         lic_key = f"{payload_b64}.{signature_b64}"
         
         async with SessionLocal() as session:
-            l = ClientLicense(
-                client_name=data.client_name, license_key=lic_key, 
-                plan=data.plan, expires_at=datetime.fromisoformat(expires)
-            )
+            l = ClientLicense(client_name=data.client_name, license_key=lic_key, plan=data.plan, expires_at=datetime.fromisoformat(expires))
             session.add(l); await session.commit()
             return {"status": "ok", "license_key": lic_key}
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+    except Exception as e: raise HTTPException(status_code=500, detail=str(e))
 
 @app.patch("/api/admin/licenses/{lic_id}/toggle")
 async def toggle_license(lic_id: int, _=Depends(get_current_owner)):
@@ -125,8 +200,8 @@ async def delete_license(lic_id: int, _=Depends(get_current_owner)):
 
 # --- ОСТАЛЬНЫЕ ЭНДПОИНТЫ ---
 @app.get("/api/license/info")
-async def get_license_info(_=Depends(get_current_admin)):
-    return license_info.to_dict()
+async def get_license_info(x_view_as: str = Header(None), _=Depends(get_current_admin)):
+    return get_effective_license(x_view_as).to_dict()
 
 @app.get("/api/status")
 async def get_status(_=Depends(get_current_admin)):
@@ -141,19 +216,26 @@ async def get_status(_=Depends(get_current_admin)):
 
 class AITextRequest(BaseModel): text: str; word_count: int | None = None
 class AIGenerateRequest(BaseModel): prompt: str; base_text: str | None = None
-class AIImageRequest(BaseModel):
-    prompt: str; post_id: int | None = None; width: int = 1024; height: int = 1024; model: str = "flux"; seed: int | None = None; nologo: bool = True
+class AIImageRequest(BaseModel): prompt: str; post_id: int | None = None; width: int = 1024; height: int = 1024; model: str = "flux"; seed: int | None = None; nologo: bool = True
 
 @app.post("/api/ai/translate")
-async def api_translate(data: AITextRequest, _=Depends(get_current_admin)):
-    check_ai_enabled()
-    try: return {"result": translate_text(data.text)}
+async def api_translate(data: AITextRequest, x_view_as: str = Header(None), _=Depends(get_current_admin)):
+    lic = get_effective_license(x_view_as)
+    check_ai_enabled(lic)
+    async with SessionLocal() as session:
+        s = (await session.execute(select(AppSettings).where(AppSettings.id == 1))).scalar_one_or_none()
+        key = s.gemini_api_key if s else None
+    try: return {"result": translate_text(data.text, api_key=key)}
     except Exception as e: raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/api/ai/rewrite")
-async def api_rewrite(data: AITextRequest, _=Depends(get_current_admin)):
-    check_ai_enabled()
-    try: return {"result": rewrite_text(data.text, data.word_count)}
+async def api_rewrite(data: AITextRequest, x_view_as: str = Header(None), _=Depends(get_current_admin)):
+    lic = get_effective_license(x_view_as)
+    check_ai_enabled(lic)
+    async with SessionLocal() as session:
+        s = (await session.execute(select(AppSettings).where(AppSettings.id == 1))).scalar_one_or_none()
+        key = s.gemini_api_key if s else None
+    try: return {"result": rewrite_text(data.text, data.word_count, api_key=key)}
     except Exception as e: raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/api/ai/remove-links")
@@ -162,20 +244,26 @@ async def api_remove_links(data: AITextRequest, _=Depends(get_current_admin)):
     except Exception as e: raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/api/ai/generate")
-async def api_generate(data: AIGenerateRequest, _=Depends(get_current_admin)):
-    check_ai_enabled()
-    try: return {"result": generate_text(data.prompt, data.base_text or "")}
+async def api_generate(data: AIGenerateRequest, x_view_as: str = Header(None), _=Depends(get_current_admin)):
+    lic = get_effective_license(x_view_as)
+    check_ai_enabled(lic)
+    async with SessionLocal() as session:
+        s = (await session.execute(select(AppSettings).where(AppSettings.id == 1))).scalar_one_or_none()
+        key = s.gemini_api_key if s else None
+    try: return {"result": generate_text(data.prompt, data.base_text or "", api_key=key)}
     except Exception as e: raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/api/ai/image-models")
-async def api_image_models(_=Depends(get_current_admin)):
-    check_image_gen()
+async def api_image_models(x_view_as: str = Header(None), _=Depends(get_current_admin)):
+    lic = get_effective_license(x_view_as)
+    check_image_gen(lic)
     try: return {"models": list_image_models()}
     except Exception as e: raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/api/ai/generate-image")
-async def api_generate_image(data: AIImageRequest, _=Depends(get_current_admin)):
-    check_image_gen()
+async def api_generate_image(data: AIImageRequest, x_view_as: str = Header(None), _=Depends(get_current_admin)):
+    lic = get_effective_license(x_view_as)
+    check_image_gen(lic)
     try:
         image_bytes = generate_image(data.prompt, width=data.width, height=data.height, model=data.model, seed=data.seed, nologo=data.nologo)
     except Exception as e: raise HTTPException(status_code=500, detail=f"Ошибка генерации: {str(e)}")
@@ -220,17 +308,18 @@ async def dev_auth(data: DevLoginData):
 async def get_sources(_=Depends(get_current_admin)):
     async with SessionLocal() as session:
         result = await session.execute(select(Source).options(selectinload(Source.templates).selectinload(SourceTemplate.template)).order_by(Source.id))
-        return [{"id": s.id, "telegram_id": s.telegram_id, "title": s.title, "username": s.username, "enabled": s.enabled, "auto_publish": s.auto_publish, "auto_template_id": s.auto_template_id, "templates": [{"id": st.template.id, "name": st.template.name} for st in s.templates]} for s in result.scalars().all()]
+        return [{"id": s.id, "telegram_id": s.telegram_id, "title": s.title, "username": s.username, "enabled": s.enabled, "auto_publish": s.auto_publish, "auto_template_id": s.auto_template_id, "pipeline_json": s.pipeline_json, "templates": [{"id": st.template.id, "name": st.template.name} for st in s.templates]} for s in result.scalars().all()]
 
 class SourceCreate(BaseModel): channel_input: str
 
 @app.post("/api/sources")
-async def add_source(data: SourceCreate, _=Depends(get_current_admin)):
-    max_sources = license_info.get("max_sources", 5)
+async def add_source(data: SourceCreate, x_view_as: str = Header(None), _=Depends(get_current_admin)):
+    lic = get_effective_license(x_view_as)
+    max_sources = lic.get("max_sources", 5)
     if max_sources != -1:
         async with SessionLocal() as session:
             count = await session.scalar(select(func.count(Source.id)))
-            if count >= max_sources: raise HTTPException(status_code=403, detail=f"Достигнут лимит источников для тарифа '{license_info.plan}' ({max_sources}).")
+            if count >= max_sources: raise HTTPException(status_code=403, detail=f"Достигнут лимит источников для тарифа '{lic.plan}' ({max_sources}).")
     
     clean_input = data.channel_input.strip(); is_numeric_id = False
     if clean_input.startswith('-100') and clean_input[1:].isdigit(): is_numeric_id = True; telegram_id = int(clean_input)
@@ -357,7 +446,7 @@ async def get_posts(trash: bool = False, _=Depends(get_current_admin)):
         if trash: query = query.where(Post.status == PostStatus.DELETED).order_by(Post.deleted_at.desc())
         else: query = query.where(Post.status != PostStatus.DELETED).order_by(Post.id.desc())
         result = await session.execute(query.limit(100))
-        return [{"id": p.id, "source": p.source.username if p.source else None, "text": p.edited_text or p.original_text, "status": p.status, "created_at": p.created_at.isoformat() if p.created_at else None, "media_count": len(p.media), "media": [{"id": m.id, "type": m.media_type, "key": m.minio_key} for m in p.media], "templates": [{"id": pt.template.id, "name": pt.template.name, "mode": pt.mode or pt.template.attach_mode} for pt in p.templates], "buttons_json": p.buttons_json} for p in result.scalars().all()]
+        return [{"id": p.id, "source": p.source.username if p.source else None, "text": p.edited_text or p.original_text, "status": p.status, "created_at": p.created_at.isoformat() if p.created_at else None, "media_count": len(p.media), "media": [{"id": m.id, "type": m.media_type, "key": m.minio_key} for m in p.media], "templates": [{"id": pt.template.id, "name": pt.template.name, "mode": pt.mode or pt.template.attach_mode} for pt in p.templates], "buttons_json": p.buttons_json, "pipeline_applied": p.pipeline_applied} for p in result.scalars().all()]
 
 @app.post("/api/manual-post")
 async def create_manual_post(_=Depends(get_current_admin)):
@@ -379,7 +468,7 @@ async def get_single_post(post_id: int, _=Depends(get_current_admin)):
         result = await session.execute(select(Post).where(Post.id == post_id).options(selectinload(Post.source), selectinload(Post.media), selectinload(Post.templates).selectinload(PostTemplate.template)))
         p = result.scalar_one_or_none()
         if not p: raise HTTPException(status_code=404)
-        return {"id": p.id, "source": p.source.username if p.source else None, "text": p.edited_text or p.original_text, "status": p.status, "media_count": len(p.media), "media": [{"id": m.id, "type": m.media_type, "key": m.minio_key} for m in p.media], "templates": [{"id": pt.template.id, "name": pt.template.name, "mode": pt.mode or pt.template.attach_mode} for pt in p.templates], "buttons_json": p.buttons_json}
+        return {"id": p.id, "source": p.source.username if p.source else None, "text": p.edited_text or p.original_text, "status": p.status, "media_count": len(p.media), "media": [{"id": m.id, "type": m.media_type, "key": m.minio_key} for m in p.media], "templates": [{"id": pt.template.id, "name": pt.template.name, "mode": pt.mode or pt.template.attach_mode} for pt in p.templates], "buttons_json": p.buttons_json, "pipeline_applied": p.pipeline_applied}
 
 @app.post("/api/posts/{post_id}/approve")
 async def approve_post(post_id: int, _=Depends(get_current_admin)):

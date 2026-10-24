@@ -29,6 +29,7 @@ class Source(Base):
     enabled = Column(Boolean, default=True)
     auto_publish = Column(Boolean, default=False)
     auto_template_id = Column(Integer, ForeignKey("templates.id"), nullable=True)
+    pipeline_json = Column(Text, nullable=True) # НОВОЕ ПОЛЕ
     templates = relationship("SourceTemplate", back_populates="source", cascade="all, delete-orphan")
 
 class TargetChannel(Base):
@@ -55,6 +56,7 @@ class Post(Base):
     published_message_id = Column(Integer, nullable=True)
     notified = Column(Boolean, default=False)
     buttons_json = Column(Text, nullable=True)
+    pipeline_applied = Column(Boolean, default=False) # НОВОЕ ПОЛЕ
     
     source = relationship("Source")
     media = relationship("PostMedia", back_populates="post", cascade="all, delete-orphan")
@@ -115,6 +117,7 @@ class AppSettings(Base):
     id = Column(Integer, primary_key=True)
     bot_last_seen = Column(DateTime, nullable=True)
     collector_last_seen = Column(DateTime, nullable=True)
+    gemini_api_key = Column(String, nullable=True) # НОВОЕ ПОЛЕ
 
 class MetricsDaily(Base):
     __tablename__ = "metrics_daily"

@@ -7,15 +7,14 @@ from shared.config import get_settings
 
 settings = get_settings()
 
+def get_gemini_client(api_key: str = None):
+    key = api_key or settings.gemini_api_key
+    if not key:
+        raise ValueError("GEMINI_API_KEY не задан. Укажите его в настройках или в .env")
+    return genai.Client(api_key=key)
 
-def get_gemini_client():
-    if not settings.gemini_api_key:
-        raise ValueError("GEMINI_API_KEY не задан в .env")
-    return genai.Client(api_key=settings.gemini_api_key)
-
-
-def translate_text(text: str) -> str:
-    client = get_gemini_client()
+def translate_text(text: str, api_key: str = None) -> str:
+    client = get_gemini_client(api_key)
     prompt = (
         f"Переведи следующий текст на русский язык. Сохрани оригинальный смысл, "
         f"эмодзи и форматирование. Выведи только готовый текст без лишних комментариев:\n\n{text}"
@@ -23,9 +22,8 @@ def translate_text(text: str) -> str:
     response = client.models.generate_content(model='gemini-2.5-flash', contents=prompt)
     return response.text.strip()
 
-
-def rewrite_text(text: str, word_count: int | None = None) -> str:
-    client = get_gemini_client()
+def rewrite_text(text: str, word_count: int | None = None, api_key: str = None) -> str:
+    client = get_gemini_client(api_key)
     count_hint = (
         f"Объем должен быть примерно {word_count} слов."
         if word_count
@@ -39,10 +37,8 @@ def rewrite_text(text: str, word_count: int | None = None) -> str:
     response = client.models.generate_content(model='gemini-2.5-flash', contents=prompt)
     return response.text.strip()
 
-
-def generate_text(prompt: str, base_text: str = "") -> str:
-    """Генерирует текст по промпту. Если передан base_text — использует его как контекст."""
-    client = get_gemini_client()
+def generate_text(prompt: str, base_text: str = "", api_key: str = None) -> str:
+    client = get_gemini_client(api_key)
     if base_text and base_text.strip():
         full_prompt = (
             f"На основе исходного текста и инструкции сгенерируй новый текст на русском языке. "
@@ -60,32 +56,9 @@ def generate_text(prompt: str, base_text: str = "") -> str:
     response = client.models.generate_content(model='gemini-2.5-flash', contents=full_prompt)
     return response.text.strip()
 
-
-# --- ГЕНЕРАЦИЯ ИЗОБРАЖЕНИЙ (POLLINATIONS) ---
-
-def generate_image(
-    prompt: str,
-    width: int = 1024,
-    height: int = 1024,
-    model: str = "flux",
-    seed: int | None = None,
-    nologo: bool = True,
-) -> bytes:
-    """Генерирует изображение через Pollinations.ai.
-
-    Параметры:
-      width, height — размер в пикселях.
-      model — "flux" (качество) или "turbo" (быстро).
-      seed — для воспроизводимости (если None — случайный).
-      nologo — убрать водяной знак (может не работать без токена).
-    """
+def generate_image(prompt: str, width: int = 1024, height: int = 1024, model: str = "flux", seed: int | None = None, nologo: bool = True) -> bytes:
     encoded_prompt = urllib.parse.quote(prompt, safe='')
-    params = {
-        "width": width,
-        "height": height,
-        "model": model,
-        "nologo": "true" if nologo else "false",
-    }
+    params = {"width": width, "height": height, "model": model, "nologo": "true" if nologo else "false"}
     if seed is not None:
         params["seed"] = seed
     query = urllib.parse.urlencode(params)
@@ -96,9 +69,7 @@ def generate_image(
         resp.raise_for_status()
         return resp.content
 
-
 def list_image_models() -> list[str]:
-    """Возвращает список доступных моделей Pollinations."""
     with httpx.Client(timeout=30.0) as client:
         resp = client.get("https://image.pollinations.ai/models")
         resp.raise_for_status()
