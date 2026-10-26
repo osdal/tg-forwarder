@@ -565,6 +565,7 @@ function App() {
             <button type="submit" className="w-full bg-blue-600 text-white py-3 rounded font-bold hover:bg-blue-700">Войти</button>
           </form>
         </div>
+        <Dialog {...dialog} />
       </div>
     )
   }

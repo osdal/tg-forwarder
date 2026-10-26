@@ -20,6 +20,7 @@ from sqlalchemy import select, func, case
 from sqlalchemy.orm import selectinload
 from telethon import TelegramClient
 from telethon.sessions import StringSession
+from telethon.tl.types import Channel
 
 from shared.config import get_settings, license_info, LicenseInfo, DEFAULT_PLANS
 from shared.db import SessionLocal
@@ -336,6 +337,13 @@ async def add_source(data: SourceCreate, x_view_as: str = Header(None), _=Depend
         client = TelegramClient(StringSession(settings.collector_session), settings.api_id, settings.api_hash); await client.connect()
         try:
             entity = await client.get_entity(clean_input); from telethon.utils import get_peer_id
+            from telethon.tl.functions.channels import JoinChannelRequest
+            from telethon.errors import UserAlreadyParticipantError
+            if isinstance(entity, Channel):
+                try:
+                    await client(JoinChannelRequest(entity))
+                except UserAlreadyParticipantError:
+                    pass
             telegram_id = get_peer_id(entity); title = entity.title; username = getattr(entity, 'username', None) or str(telegram_id)
             async with SessionLocal() as session:
                 new_source = Source(telegram_id=telegram_id, title=title, username=username, enabled=True)

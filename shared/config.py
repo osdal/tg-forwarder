@@ -92,6 +92,7 @@ class Settings(BaseSettings):
     minio_endpoint_local: str | None = None
     minio_bucket: str = "media"
     minio_public_url: str = "http://localhost:9000"
+    minio_secure: bool = False
 
     jwt_secret: str = "change_me_to_long_random_string"
     web_public_url: str = "http://localhost:8000"
