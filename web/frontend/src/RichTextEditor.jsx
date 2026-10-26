@@ -1,7 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useEditor, EditorContent } from '@tiptap/react'
 import StarterKit from '@tiptap/starter-kit'
-import Link from '@tiptap/extension-link'
 import { Node } from '@tiptap/core'
 
 // Кастомное расширение для спойлера Telegram (<tg-spoiler>)
@@ -27,12 +26,14 @@ const RichTextEditor = ({ value, onChange }) => {
 
   const editor = useEditor({
     extensions: [
+      // В tiptap 3 Link уже входит в StarterKit — настраиваем его здесь,
+      // отдельное расширение добавлять нельзя (будет дубликат "link").
       StarterKit.configure({
-        heading: false, // Отключаем заголовки, если не нужны
-      }),
-      Link.configure({
-        openOnClick: false,
-        autolink: true,
+        heading: false,
+        link: {
+          openOnClick: false,
+          autolink: true,
+        },
       }),
       Spoiler,
     ],
