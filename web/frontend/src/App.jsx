@@ -382,6 +382,17 @@ function App() {
     });
   }
   const copyToClipboard = (text) => { navigator.clipboard.writeText(text); showAlert("Скопировано!", "Успех", "success"); }
+  const downloadZip = async () => {
+    try {
+      const res = await fetchWithAuth('/api/admin/download-latest')
+      const blob = await res.blob()
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url; a.download = 'tg-forwarder.zip'
+      document.body.appendChild(a); a.click(); a.remove()
+      setTimeout(() => URL.revokeObjectURL(url), 1000)
+    } catch (err) { showAlert(err.message, "Ошибка", "error") }
+  }
 
   const handleClearChannel = async () => { 
     showConfirm("Удалить все сообщения из канала?", async () => {
@@ -772,7 +783,7 @@ function App() {
           <div className="bg-white p-4 sm:p-6 rounded-lg shadow mb-8">
             <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-6 gap-4">
               <h2 className="text-xl font-bold">Выдать новую лицензию</h2>
-              <a href="/api/admin/download-latest" className="w-full sm:w-auto text-center bg-green-600 hover:bg-green-700 text-white px-6 py-2 rounded shadow font-bold text-sm flex items-center justify-center gap-2 transition">📦 Скачать ZIP</a>
+              <button onClick={downloadZip} className="w-full sm:w-auto text-center bg-green-600 hover:bg-green-700 text-white px-6 py-2 rounded shadow font-bold text-sm flex items-center justify-center gap-2 transition">📦 Скачать ZIP</button>
             </div>
             <form onSubmit={handleCreateLicense} className="flex flex-col sm:flex-row flex-wrap gap-4 items-start sm:items-end">
               <div className="flex-grow w-full sm:w-auto">

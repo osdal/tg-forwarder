@@ -1,3 +1,4 @@
+import { useEffect, useState } from 'react'
 import { useEditor, EditorContent } from '@tiptap/react'
 import StarterKit from '@tiptap/starter-kit'
 import Link from '@tiptap/extension-link'
@@ -20,6 +21,10 @@ const Spoiler = Node.create({
 })
 
 const RichTextEditor = ({ value, onChange }) => {
+  // Собственный диалог для ввода ссылки (без нативного window.prompt)
+  const [linkDialogOpen, setLinkDialogOpen] = useState(false)
+  const [linkUrl, setLinkUrl] = useState('')
+
   const editor = useEditor({
     extensions: [
       StarterKit.configure({
@@ -44,21 +49,34 @@ const RichTextEditor = ({ value, onChange }) => {
     },
   })
 
+  // Синхронизация внешнего значения (например, после работы ИИ или цепочки)
+  useEffect(() => {
+    if (!editor || value === undefined || value === null) return
+    const current = editor.getHTML()
+    if (value === current) return
+    // Пустой редактор отдаёт <p></p>, не зацикливаемся на этом
+    if (value === '' && current === '<p></p>') return
+    editor.commands.setContent(value, false)
+  }, [value, editor])
+
   if (!editor) {
     return null
   }
 
-  // Вспомогательная функция для добавления ссылки
+  // Открыть диалог добавления ссылки
   const setLink = () => {
-    const previousUrl = editor.getAttributes('link').href
-    const url = window.prompt('URL', previousUrl)
+    setLinkUrl(editor.getAttributes('link').href || '')
+    setLinkDialogOpen(true)
+  }
 
-    if (url === null) return // Отмена
+  const applyLink = () => {
+    const url = linkUrl.trim()
     if (url === '') {
       editor.chain().focus().extendMarkRange('link').unsetLink().run()
-      return
+    } else {
+      editor.chain().focus().extendMarkRange('link').setLink({ href: url }).run()
     }
-    editor.chain().focus().extendMarkRange('link').setLink({ href: url }).run()
+    setLinkDialogOpen(false)
   }
 
   return (
@@ -115,6 +133,34 @@ const RichTextEditor = ({ value, onChange }) => {
 
       {/* Само поле ввода */}
       <EditorContent editor={editor} />
+
+      {/* Диалог ввода ссылки */}
+      {linkDialogOpen && (
+        <div className="fixed inset-0 z-[300] flex items-center justify-center bg-black/40 p-4">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm overflow-hidden">
+            <div className="flex items-center justify-between px-5 py-4 border-b">
+              <h3 className="font-bold text-gray-800">Ссылка</h3>
+              <button type="button" onClick={() => setLinkDialogOpen(false)} className="text-gray-400 hover:text-gray-600 text-xl leading-none">&times;</button>
+            </div>
+            <div className="p-5">
+              <input
+                type="url"
+                autoFocus
+                placeholder="https://..."
+                value={linkUrl}
+                onChange={e => setLinkUrl(e.target.value)}
+                onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); applyLink() } }}
+                className="w-full p-3 border rounded-lg outline-none focus:ring-2 focus:ring-blue-500 text-sm"
+              />
+              <p className="text-xs text-gray-400 mt-2">Оставьте поле пустым, чтобы убрать ссылку.</p>
+            </div>
+            <div className="flex justify-end gap-2 px-5 py-4 bg-gray-50 border-t">
+              <button type="button" onClick={() => setLinkDialogOpen(false)} className="px-4 py-2 text-gray-600 font-medium hover:bg-gray-100 rounded-lg transition">Отмена</button>
+              <button type="button" onClick={applyLink} className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-bold transition">ОК</button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

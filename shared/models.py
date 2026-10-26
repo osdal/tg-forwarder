@@ -1,5 +1,6 @@
 from datetime import datetime
-from sqlalchemy import Column, Integer, String, Boolean, DateTime, ForeignKey, Text
+from sqlalchemy import Column, Integer, BigInteger, String, Boolean, DateTime, ForeignKey, Text
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import relationship, declarative_base
 import enum
 
@@ -23,7 +24,7 @@ class MediaType(str, enum.Enum):
 class Source(Base):
     __tablename__ = "sources"
     id = Column(Integer, primary_key=True)
-    telegram_id = Column(Integer, unique=True, index=True)
+    telegram_id = Column(BigInteger, unique=True, index=True)
     title = Column(String)
     username = Column(String, unique=True, index=True)
     enabled = Column(Boolean, default=True)
@@ -35,7 +36,7 @@ class Source(Base):
 class TargetChannel(Base):
     __tablename__ = "target_channels"
     id = Column(Integer, primary_key=True)
-    telegram_id = Column(Integer, unique=True, index=True)
+    telegram_id = Column(BigInteger, unique=True, index=True)
     title = Column(String)
     username = Column(String, nullable=True)
     enabled = Column(Boolean, default=True)
@@ -45,17 +46,20 @@ class Post(Base):
     __tablename__ = "posts"
     id = Column(Integer, primary_key=True)
     source_id = Column(Integer, ForeignKey("sources.id"))
-    source_message_id = Column(Integer)
+    source_message_id = Column(BigInteger)
+    source_grouped_id = Column(BigInteger, nullable=True, index=True)
     original_text = Column(Text, nullable=True)
     edited_text = Column(Text, nullable=True)
     status = Column(String, default=PostStatus.NEW.value)
+    source_edited = Column(Boolean, default=False, nullable=False)
+    publish_at = Column(DateTime(timezone=True), nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
     published_at = Column(DateTime, nullable=True)
     deleted_at = Column(DateTime, nullable=True)
     target_channel_id = Column(Integer, ForeignKey("target_channels.id"), nullable=True)
-    published_message_id = Column(Integer, nullable=True)
+    published_message_id = Column(BigInteger, nullable=True)
     notified = Column(Boolean, default=False)
-    buttons_json = Column(Text, nullable=True)
+    buttons_json = Column(JSONB, nullable=True)
     pipeline_applied = Column(Boolean, default=False) # НОВОЕ ПОЛЕ
     
     source = relationship("Source")
@@ -69,6 +73,7 @@ class PostMedia(Base):
     minio_key = Column(String)
     media_type = Column(String)
     order = Column(Integer, default=0)
+    caption = Column(Text, nullable=True)
     is_user_added = Column(Boolean, default=False)
     post = relationship("Post", back_populates="media")
 
@@ -84,8 +89,8 @@ class Template(Base):
     text = Column(Text)
     attach_mode = Column(String, default="append")
     folder_id = Column(Integer, ForeignKey("template_folders.id"), nullable=True)
-    media_json = Column(Text, nullable=True)
-    buttons_json = Column(Text, nullable=True)
+    media_json = Column(JSONB, nullable=True)
+    buttons_json = Column(JSONB, nullable=True)
 
 class PostTemplate(Base):
     __tablename__ = "post_templates"
@@ -123,8 +128,12 @@ class MetricsDaily(Base):
     __tablename__ = "metrics_daily"
     id = Column(Integer, primary_key=True)
     date = Column(DateTime)
+    source_id = Column(Integer, ForeignKey("sources.id"), nullable=True)
     target_channel_id = Column(Integer, ForeignKey("target_channels.id"), nullable=True)
-    posts_count = Column(Integer, default=0)
+    collected = Column(Integer, default=0)
+    published = Column(Integer, default=0)
+    deleted = Column(Integer, default=0)
+    pending = Column(Integer, default=0)
 
 class ClientLicense(Base):
     __tablename__ = "client_licenses"
