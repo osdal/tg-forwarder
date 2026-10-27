@@ -581,7 +581,7 @@ function App() {
       <div className={`absolute top-0 left-0 h-full w-64 bg-white shadow-2xl transform transition-transform duration-300 ${isMobileMenuOpen ? 'translate-x-0' : '-translate-x-full'} flex flex-col`}>
         <div className="p-4 border-b flex justify-between items-center bg-gray-50">
           <span className="font-bold text-lg text-gray-800">📨 Меню</span>
-          <button onClick={() => setIsMobileMenuOpen(false)} className="text-3xl leading-none text-gray-500 hover:text-black">&times;</button>
+          <button onClick={() => setIsMobileMenuOpen(false)} className="w-10 h-10 flex items-center justify-center text-3xl leading-none text-gray-500 hover:text-black rounded-lg hover:bg-gray-100">&times;</button>
         </div>
         <div className="flex-grow overflow-y-auto p-4 flex flex-col gap-1">
           <button onClick={() => { setActiveTab('posts'); setIsMobileMenuOpen(false); }} className={`w-full text-left px-4 py-3 rounded-lg font-bold text-lg ${activeTab === 'posts' ? 'bg-blue-50 text-blue-700' : 'text-gray-700 hover:bg-gray-100'}`}>Очередь</button>
@@ -1018,9 +1018,9 @@ function App() {
               </select>
               <input type="number" placeholder="Seed" className="border rounded-lg p-1.5 text-sm w-28 outline-none focus:ring-2 focus:ring-emerald-500" value={imageSeed} onChange={e => setImageSeed(e.target.value)} />
             </div>
-            <div className="flex gap-2">
+            <div className="flex flex-col sm:flex-row gap-2">
               <input placeholder="Промпт для картинки..." className="flex-grow p-2 border rounded-lg text-sm outline-none focus:ring-2 focus:ring-emerald-500" value={imagePrompt} onChange={e => setImagePrompt(e.target.value)} onKeyDown={e => { if (e.key === 'Enter' && !imageGenerating) { e.preventDefault(); handleGenerateImage(); } }} disabled={imageGenerating} />
-              <button onClick={() => handleGenerateImage()} disabled={imageGenerating} className="bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2 rounded-lg text-sm font-bold disabled:opacity-50 transition shadow whitespace-nowrap">{imageGenerating ? 'Генерация...' : '🎨 Сгенерировать'}</button>
+              <button onClick={() => handleGenerateImage()} disabled={imageGenerating} className="w-full sm:w-auto bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2 rounded-lg text-sm font-bold disabled:opacity-50 transition shadow whitespace-nowrap">{imageGenerating ? 'Генерация...' : '🎨 Сгенерировать'}</button>
             </div>
             {lastGeneratedMediaId && editingPost.media?.find(m => m.id === lastGeneratedMediaId) && (
               <div className="mt-3 flex items-center gap-3 bg-white p-2 rounded-lg border shadow-sm">

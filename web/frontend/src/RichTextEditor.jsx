@@ -83,7 +83,7 @@ const RichTextEditor = ({ value, onChange }) => {
   return (
     <div className="border rounded-lg overflow-hidden bg-white">
       {/* Панель инструментов */}
-      <div className="flex flex-wrap gap-1 p-2 bg-gray-50 border-b">
+      <div className="flex flex-wrap gap-1 p-2 bg-gray-50 border-b [&>button]:min-h-[36px]">
         <button
           type="button"
           onClick={() => editor.chain().focus().toggleBold().run()}
