@@ -881,7 +881,38 @@ function App() {
           </div>
           <div className="bg-white rounded-lg shadow overflow-hidden">
             <h2 className="text-xl font-bold p-4 border-b">Активные источники</h2>
-            <div className="overflow-x-auto">
+
+            {/* Мобильный вид: карточки вместо широкой таблицы */}
+            <div className="md:hidden divide-y">
+              {sources.map(src => (
+                <div key={src.id} className="p-4 flex flex-col gap-3">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <div className="font-bold break-words">{src.title}</div>
+                      <div className="text-sm text-gray-500 break-all">@{src.username}</div>
+                    </div>
+                    <button onClick={() => handleToggleSource(src.id)} className={`shrink-0 px-3 rounded-full text-xs font-bold min-h-[36px] flex items-center ${src.enabled ? 'bg-green-100 text-green-800' : 'bg-gray-200 text-gray-600'}`}>{src.enabled ? 'Активен' : 'Отключен'}</button>
+                  </div>
+                  <div className="flex flex-wrap items-center gap-3">
+                    <label className="flex items-center gap-2 text-sm">
+                      <input type="checkbox" checked={src.auto_publish || false} onChange={(e) => handleToggleAutoPublish(src, e.target.checked)} className="w-5 h-5 cursor-pointer accent-indigo-600" />
+                      Авто-публикация
+                    </label>
+                    {src.auto_publish && <select value={src.auto_template_id || ""} onChange={(e) => handleSetAutoTemplate(src, e.target.value)} className="text-xs p-1.5 border rounded flex-grow"><option value="">-- Без шаблона --</option>{templates.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}</select>}
+                  </div>
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="flex gap-4">
+                      <button onClick={() => setEditingSource(src)} className="text-blue-600 text-sm font-medium min-h-[40px] flex items-center">📎 Шаблоны ({src.templates?.length || 0})</button>
+                      <button onClick={() => openPipeline(src)} className={`text-sm font-medium min-h-[40px] flex items-center ${src.pipeline_json ? 'text-purple-600 font-bold' : 'text-gray-500'}`}>🧠 Цепочка</button>
+                    </div>
+                    <button onClick={() => handleDeleteSource(src.id)} className="text-red-500 text-sm font-medium px-3 min-h-[40px] flex items-center">Удалить</button>
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            {/* Десктоп: таблица */}
+            <div className="hidden md:block overflow-x-auto">
               <table className="w-full text-left min-w-[800px]">
                 <thead><tr className="bg-gray-50 text-sm"><th className="p-4">Название</th><th className="p-4 text-center">Статус</th><th className="p-4 text-center">Авто-публикация</th><th className="p-4 text-center">Цепочка / Шаблоны</th><th className="p-4 text-right">Действия</th></tr></thead>
                 <tbody>
