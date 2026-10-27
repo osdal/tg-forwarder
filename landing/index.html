@@ -216,7 +216,13 @@
                 // --- ПОДЗАГОЛОВОК ---
                 const subTitleEl = document.getElementById('hero-subtitle');
                 if (data.hero_subtitle) subTitleEl.textContent = data.hero_subtitle;
-                if (data.hero_subtitle_size) subTitleEl.classList.add(data.hero_subtitle_size);
+                if (data.hero_subtitle_size) {
+                    subTitleEl.className = subTitleEl.className
+                        .split(' ')
+                        .filter(c => c && !/^(sm:|md:|lg:|xl:)?text-\d+xl$/.test(c))
+                        .join(' ');
+                    data.hero_subtitle_size.split(' ').filter(Boolean).forEach(c => subTitleEl.classList.add(c));
+                }
                 if (data.hero_subtitle_font) subTitleEl.classList.add(data.hero_subtitle_font);
 
                 // --- КНОПКА ---
