@@ -4,6 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>TG Forwarder — Студия контента для Telegram</title>
+    <link rel="icon" href="favicon.svg" type="image/svg+xml">
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;800&family=Merriweather:wght@400;700&family=Fira+Code:wght@400;700&display=swap" rel="stylesheet">
     <style>
@@ -202,9 +203,12 @@
                 
                 // Применяем кастомные классы размера/шрифта, если они заданы в CMS
                 if (data.hero_title_size) {
-                    // Удаляем старые классы размера, чтобы не конфликтовали
-                    titleEl.className = titleEl.className.replace(/text-\d+xl|md:text-\d+xl/g, '').trim();
-                    titleEl.classList.add(...data.hero_title_size.split(' '));
+                    // Удаляем старые классы размера (включая sm:/md:), чтобы не конфликтовали
+                    titleEl.className = titleEl.className
+                        .split(' ')
+                        .filter(c => c && !/^(sm:|md:|lg:|xl:)?text-\d+xl$/.test(c))
+                        .join(' ');
+                    data.hero_title_size.split(' ').filter(Boolean).forEach(c => titleEl.classList.add(c));
                 }
                 if (data.hero_title_weight) titleEl.classList.add(data.hero_title_weight);
                 if (data.hero_title_font) titleEl.classList.add(data.hero_title_font);
