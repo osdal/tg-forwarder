@@ -249,7 +249,7 @@ async def publish_post_to_channel(post_id: int) -> tuple[bool, str]:
                         sent_messages.append(sent_msg)
 
             post.status = PostStatus.PUBLISHED
-            post.published_at = datetime.now(timezone.utc)
+            post.published_at = datetime.now(timezone.utc).replace(tzinfo=None)
             post.target_channel_id = target.id
             post.published_message_id = sent_messages[0].message_id if sent_messages else None
 

@@ -496,7 +496,7 @@ async def unpublish_post(post_id: int, _=Depends(get_current_admin)):
         post = (await session.execute(select(Post).where(Post.id == post_id))).scalar_one_or_none()
         if not post: raise HTTPException(status_code=404)
         if post.status != PostStatus.PUBLISHED: raise HTTPException(status_code=400, detail="Пост не был опубликован")
-        post.status = PostStatus.NEW; post.published_at = None
+        post.status = PostStatus.NEW; post.published_at = None; post.published_message_id = None
         await session.commit(); return {"status": "ok"}
 
 @app.post("/api/posts/{post_id}/delete")
