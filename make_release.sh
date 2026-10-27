@@ -42,6 +42,7 @@ echo "🧹 Очищаю секреты и лишние файлы..."
 rm -f "$TEMP_DIR/scripts/generate_license.py"
 rm -f "$TEMP_DIR/scripts/setup_license.py"
 find "$TEMP_DIR" -type d -name "__pycache__" -exec rm -rf {} +
+find "$TEMP_DIR" -name "*.bak" -delete
 
 echo "🤐 Создаю архив $ARCHIVE_NAME..."
 cd "$TEMP_DIR"

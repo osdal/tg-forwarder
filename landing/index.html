@@ -62,7 +62,7 @@
         <div class="max-w-4xl mx-auto text-center relative z-10">
             <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full glass text-sm text-blue-300 mb-6">
                 <span class="flex h-2 w-2 rounded-full bg-blue-500 animate-pulse"></span>
-                Версия 1.0 уже доступна
+                <span id="hero-badge">Версия 1.0 · обновлено 27.10.2026</span>
             </div>
             
             <!-- Заголовок адаптируется: text-4xl на телефоне, text-7xl на десктопе -->
@@ -75,6 +75,20 @@
                     <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path></svg>
                     <span id="hero-btn-text">Скачать</span>
                 </a>
+            </div>
+        </div>
+    </section>
+
+    <!-- What's New -->
+    <section id="whats-new" class="pb-16 sm:pb-24 px-4">
+        <div class="max-w-4xl mx-auto">
+            <div class="glass rounded-2xl p-6 sm:p-8">
+                <div class="flex flex-wrap items-center gap-3 mb-5">
+                    <span class="text-2xl">🚀</span>
+                    <h2 class="text-xl sm:text-2xl font-bold" id="changelog-title" style="color: #ffffff;">Что нового</h2>
+                    <span class="ml-auto text-xs sm:text-sm px-3 py-1 rounded-full bg-blue-500/20 text-blue-300" id="changelog-date"></span>
+                </div>
+                <ul id="changelog-list" class="space-y-3"></ul>
             </div>
         </div>
     </section>
@@ -203,6 +217,24 @@
 
                 // --- КНОПКА ---
                 if (data.hero_btn_text) document.getElementById('hero-btn-text').textContent = data.hero_btn_text;
+                if (data.hero_badge) document.getElementById('hero-badge').textContent = data.hero_badge;
+
+                // --- ЧТО НОВОГО ---
+                const clTitle = document.getElementById('changelog-title');
+                const clDate = document.getElementById('changelog-date');
+                const clList = document.getElementById('changelog-list');
+                if (data.changelog_title) clTitle.textContent = data.changelog_title;
+                if (data.changelog_date) clDate.textContent = data.changelog_date;
+                if (data.changelog && data.changelog.length > 0) {
+                    clList.innerHTML = data.changelog.map(item => `
+                        <li class="flex gap-3 text-sm sm:text-base" style="color: ${data.card_desc_color || '#9ca3af'}">
+                            <span class="text-blue-400 shrink-0">•</span>
+                            <span>${item}</span>
+                        </li>
+                    `).join('');
+                } else {
+                    document.getElementById('whats-new').style.display = 'none';
+                }
 
                 // --- БЛОКИ ВОЗМОЖНОСТЕЙ ---
                 const grid = document.getElementById('features-grid');
