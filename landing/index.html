@@ -3,7 +3,25 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>TG Forwarder — Студия контента для Telegram</title>
+    <title>TG Forwarder — автопостинг в Telegram на вашем сервере</title>
+    <meta name="description" content="Собирает посты из каналов-источников, переписывает с ИИ и публикует по расписанию. Self-hosted: токены, медиа и база остаются у вас. Free — до 5 источников.">
+    <link rel="canonical" href="https://osdal.github.io/tg-forwarder/">
+    <meta name="theme-color" content="#0a0a0a">
+
+    <meta property="og:type" content="website">
+    <meta property="og:site_name" content="TG Forwarder">
+    <meta property="og:title" content="TG Forwarder — автопостинг в Telegram на вашем сервере">
+    <meta property="og:description" content="Собирает посты из каналов-источников, переписывает с ИИ и публикует по расписанию. Токены, медиа и база остаются у вас.">
+    <meta property="og:url" content="https://osdal.github.io/tg-forwarder/">
+    <meta property="og:image" content="https://osdal.github.io/tg-forwarder/og-image.png">
+    <meta property="og:image:width" content="1200">
+    <meta property="og:image:height" content="630">
+    <meta property="og:locale" content="ru_RU">
+    <meta name="twitter:card" content="summary_large_image">
+    <meta name="twitter:title" content="TG Forwarder — автопостинг в Telegram на вашем сервере">
+    <meta name="twitter:description" content="Сбор постов, ИИ-редактор, генерация картинок и публикация по расписанию. Данные остаются у вас.">
+    <meta name="twitter:image" content="https://osdal.github.io/tg-forwarder/og-image.png">
+
     <link rel="icon" href="favicon.svg" type="image/svg+xml">
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;800&family=Merriweather:wght@400;700&family=Fira+Code:wght@400;700&display=swap" rel="stylesheet">
@@ -11,11 +29,32 @@
         body { background-color: #0a0a0a; color: #ffffff; transition: background-color 0.3s, color 0.3s; }
         .gradient-text { background: linear-gradient(to right, #3b82f6, #8b5cf6, #ec4899); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
         .glass { background: rgba(255, 255, 255, 0.05); backdrop-filter: blur(10px); border: 1px solid rgba(255, 255, 255, 0.1); }
-        
+        .shot { border: 1px solid rgba(255,255,255,0.12); border-radius: 16px; box-shadow: 0 30px 80px -30px rgba(59,130,246,0.45); }
         .font-serif { font-family: 'Merriweather', serif !important; }
         .font-mono { font-family: 'Fira Code', monospace !important; }
         .font-sans { font-family: 'Inter', sans-serif !important; }
+        html { scroll-padding-top: 80px; }
     </style>
+
+    <script type="application/ld+json">
+    {
+      "@context": "https://schema.org",
+      "@type": "SoftwareApplication",
+      "name": "TG Forwarder",
+      "applicationCategory": "BusinessApplication",
+      "operatingSystem": "Windows, Linux, macOS (Docker)",
+      "description": "Студия контента для Telegram: сбор постов из каналов-источников, ИИ-редактор, генерация картинок, шаблоны с inline-кнопками и публикация по расписанию. Работает на собственном сервере пользователя.",
+      "url": "https://osdal.github.io/tg-forwarder/",
+      "downloadUrl": "https://osdal.github.io/tg-forwarder/latest.zip",
+      "softwareVersion": "1.0",
+      "offers": {
+        "@type": "Offer",
+        "price": "0",
+        "priceCurrency": "RUB",
+        "description": "Free — до 5 источников, без ИИ и генерации картинок"
+      }
+    }
+    </script>
 </head>
 <body class="antialiased font-sans">
 
@@ -23,26 +62,22 @@
     <nav class="fixed w-full z-50 glass border-b border-white/10">
         <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
             <div class="flex items-center justify-between h-16">
-                <!-- Логотип -->
                 <div class="flex items-center gap-2">
                     <span class="text-2xl">📨</span>
                     <span class="font-bold text-xl tracking-tight" id="nav-logo" style="color: #ffffff;">TG Forwarder</span>
                 </div>
-                
-                <!-- Десктопное меню -->
+
                 <div class="hidden md:block">
-                    <div id="nav-links-desktop" class="ml-10 flex items-baseline space-x-8"></div>
+                    <div id="nav-links-desktop" class="ml-10 flex items-baseline space-x-8 text-sm text-gray-300"></div>
                 </div>
 
-                <!-- Кнопка скачать (Десктоп) -->
                 <div class="hidden md:block">
-                    <a href="latest.zip" download class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg font-medium transition shadow-lg shadow-blue-500/30">Скачать</a>
+                    <a href="latest.zip" download data-goal="download_zip" class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg font-medium transition shadow-lg shadow-blue-500/30">Скачать</a>
                 </div>
 
-                <!-- Гамбургер (Мобилка) -->
                 <div class="md:hidden flex items-center gap-4">
-                    <a href="latest.zip" download class="bg-blue-600 text-white px-3 py-1.5 rounded-lg text-sm font-medium">Скачать</a>
-                    <button id="mobile-menu-btn" class="text-gray-300 hover:text-white focus:outline-none">
+                    <a href="latest.zip" download data-goal="download_zip" class="bg-blue-600 text-white px-3 py-1.5 rounded-lg text-sm font-medium">Скачать</a>
+                    <button id="mobile-menu-btn" aria-label="Меню" class="text-gray-300 hover:text-white focus:outline-none">
                         <svg class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"/>
                         </svg>
@@ -51,37 +86,125 @@
             </div>
         </div>
 
-        <!-- Мобильное меню (скрыто по умолчанию) -->
         <div id="mobile-menu" class="hidden md:hidden bg-[#0a0a0a] border-b border-white/10">
             <div id="nav-links-mobile" class="px-4 pt-2 pb-4 space-y-1 sm:px-3"></div>
         </div>
     </nav>
 
-    <!-- Hero Section -->
-    <section class="pt-32 pb-16 sm:pb-24 px-4 relative overflow-hidden">
-        <div class="absolute top-0 left-1/2 -translate-x-1/2 w-full max-w-[1000px] h-[500px] bg-blue-500/20 blur-[120px] rounded-full pointer-events-none"></div>
-        <div class="max-w-4xl mx-auto text-center relative z-10">
+    <!-- Hero -->
+    <section class="pt-28 sm:pt-32 pb-10 sm:pb-14 px-4 relative overflow-hidden">
+        <div class="absolute top-0 left-1/2 -translate-x-1/2 w-full max-w-[1100px] h-[550px] bg-blue-500/20 blur-[130px] rounded-full pointer-events-none"></div>
+        <div class="max-w-5xl mx-auto text-center relative z-10">
             <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full glass text-sm text-blue-300 mb-6">
                 <span class="flex h-2 w-2 rounded-full bg-blue-500 animate-pulse"></span>
-                <span id="hero-badge">Версия 1.0 · обновлено 27.10.2026</span>
+                <span id="hero-badge">Версия 1.0 · обновлено 29.10.2026</span>
             </div>
-            
-            <!-- Заголовок адаптируется: text-4xl на телефоне, text-7xl на десктопе -->
-            <h1 id="hero-title" class="text-4xl sm:text-5xl md:text-7xl tracking-tight mb-6 leading-tight" style="color: #ffffff;"></h1>
-            <p id="hero-subtitle" class="text-lg sm:text-xl mb-10 max-w-2xl mx-auto px-2" style="color: #9ca3af;"></p>
-            
-            <div class="flex flex-col sm:flex-row gap-4 justify-center px-4">
-                <!-- Кнопка на всю ширину на мобилке, авто на десктопе -->
-                <a href="latest.zip" download class="w-full sm:w-auto bg-white text-black px-8 py-4 rounded-xl font-bold text-lg hover:bg-gray-200 transition flex items-center justify-center gap-2 shadow-[0_0_40px_-10px_rgba(255,255,255,0.3)]">
+
+            <h1 id="hero-title" class="text-3xl sm:text-5xl md:text-6xl lg:text-7xl tracking-tight mb-6 leading-tight" style="color: #ffffff;">Автопостинг в Telegram <br> <span class="gradient-text">на вашем сервере</span></h1>
+            <p id="hero-subtitle" class="text-lg sm:text-xl mb-8 max-w-2xl mx-auto px-2" style="color: #9ca3af;">Собирает посты из каналов-источников, переписывает с ИИ и публикует по расписанию. Токены, медиа и база остаются у вас.</p>
+
+            <div class="flex flex-col sm:flex-row gap-3 justify-center px-4">
+                <a href="latest.zip" download data-goal="download_zip" class="w-full sm:w-auto bg-white text-black px-8 py-4 rounded-xl font-bold text-lg hover:bg-gray-200 transition flex items-center justify-center gap-2 shadow-[0_0_40px_-10px_rgba(255,255,255,0.3)]">
                     <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path></svg>
-                    <span id="hero-btn-text">Скачать</span>
+                    <span id="hero-btn-text">Скачать бесплатно</span>
                 </a>
+                <a href="https://t.me/osdal?text=Здравствуйте!%20Хочу%20получить%20ключ%20TG%20Forwarder" target="_blank" rel="noopener" data-goal="click_telegram_key" class="w-full sm:w-auto glass hover:bg-white/10 text-white px-8 py-4 rounded-xl font-bold text-lg transition flex items-center justify-center gap-2">
+                    <svg class="w-5 h-5" fill="currentColor" viewBox="0 0 24 24"><path d="M9.78 18.65l.28-4.23 7.68-6.92c.34-.31-.07-.46-.52-.19L7.74 13.3 3.64 12c-.88-.25-.89-.86.2-1.3l15.97-6.16c.73-.33 1.43.18 1.15 1.3l-2.72 12.81c-.19.91-.74 1.13-1.5.71L12.6 16.3l-1.99 1.93c-.23.23-.42.42-.83.42z"/></svg>
+                    Получить ключ
+                </a>
+            </div>
+
+            <p class="text-xs sm:text-sm text-gray-500 mt-4">Архив 0,34 МБ · Windows / Linux / macOS · нужен Docker. Free-ключ выдаём бесплатно в Telegram — без него установка не запустится.</p>
+
+            <div class="flex flex-wrap justify-center gap-2 mt-6 text-xs sm:text-sm text-gray-400">
+                <span class="glass px-3 py-1.5 rounded-full">🔒 Данные у вас</span>
+                <span class="glass px-3 py-1.5 rounded-full">🤖 Telegram-бот + веб-панель</span>
+                <span class="glass px-3 py-1.5 rounded-full">📦 Docker</span>
+                <span class="glass px-3 py-1.5 rounded-full">🆓 Free до 5 источников</span>
             </div>
         </div>
     </section>
 
-    <!-- What's New -->
-    <section id="whats-new" class="pb-16 sm:pb-24 px-4">
+    <!-- Hero screenshot -->
+    <section class="px-4 pb-14 sm:pb-20">
+        <div class="max-w-6xl mx-auto relative">
+            <div class="absolute inset-0 bg-gradient-to-r from-blue-600/20 to-purple-600/20 blur-3xl rounded-full pointer-events-none"></div>
+            <img src="screenshots/app-queue.png" alt="Очередь постов в TG Forwarder" class="shot relative w-full" loading="lazy">
+        </div>
+    </section>
+
+    <!-- How it works -->
+    <section id="how" class="py-16 sm:py-24 bg-[#0f0f0f]">
+        <div class="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div class="text-center mb-10 sm:mb-14">
+                <h2 class="text-3xl md:text-4xl font-bold mb-4" id="steps-title" style="color: #ffffff;">Как это работает</h2>
+                <p class="text-base sm:text-lg" id="steps-subtitle" style="color: #9ca3af;">Три шага — и канал работает на автопилоте.</p>
+            </div>
+            <div id="steps-grid" class="grid grid-cols-1 md:grid-cols-3 gap-6 sm:gap-8"></div>
+            <p class="text-center text-sm text-gray-500 mt-8">Понадобятся Docker, API_ID/API_HASH с my.telegram.org, бот от @BotFather и лицензионный ключ. Обычно установка занимает 15–30 минут.</p>
+        </div>
+    </section>
+
+    <!-- Features -->
+    <section id="features" class="py-16 sm:py-24 bg-[#0a0a0a]">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div class="text-center mb-12 sm:mb-16">
+                <h2 class="text-3xl md:text-4xl font-bold mb-4" id="features-title" style="color: #ffffff;">Всё, что нужно для роста канала</h2>
+                <p class="text-base sm:text-lg" id="features-subtitle" style="color: #9ca3af;">Перестаньте тратить часы на рутину. Доверьте её автоматизации.</p>
+            </div>
+            <div id="features-grid" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 sm:gap-8"></div>
+        </div>
+    </section>
+
+    <!-- Screenshots -->
+    <section id="screenshots" class="py-16 sm:py-24 bg-[#0f0f0f]">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div class="text-center mb-12">
+                <h2 class="text-3xl md:text-4xl font-bold mb-4" id="gallery-title" style="color: #ffffff;">Посмотрите, как это выглядит</h2>
+                <p class="text-base sm:text-lg" id="gallery-subtitle" style="color: #9ca3af;">Реальный интерфейс: очередь, редактор, шаблоны и метрики.</p>
+            </div>
+
+            <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 sm:gap-8">
+                <figure class="glass rounded-2xl p-3">
+                    <img src="screenshots/app-queue.png" alt="Очередь постов" class="rounded-xl w-full" loading="lazy">
+                    <figcaption class="text-sm text-gray-400 px-2 pt-3">Очередь: все посты из источников в одном месте</figcaption>
+                </figure>
+                <figure class="glass rounded-2xl p-3">
+                    <img src="screenshots/app-editor.png" alt="Редактор поста" class="rounded-xl w-full" loading="lazy">
+                    <figcaption class="text-sm text-gray-400 px-2 pt-3">Редактор: текст, медиа, кнопки и ИИ-помощник</figcaption>
+                </figure>
+                <figure class="glass rounded-2xl p-3">
+                    <img src="screenshots/app-metrics.png" alt="Метрики источников" class="rounded-xl w-full" loading="lazy">
+                    <figcaption class="text-sm text-gray-400 px-2 pt-3">Метрики: КПД каждого источника</figcaption>
+                </figure>
+                <div class="glass rounded-2xl p-4 flex items-center justify-center gap-4">
+                    <figure class="w-1/2 text-center">
+                        <img src="screenshots/app-mobile-queue.png" alt="Очередь на телефоне" class="rounded-xl w-full border border-white/10" loading="lazy">
+                        <figcaption class="text-xs text-gray-400 pt-2">Очередь на телефоне</figcaption>
+                    </figure>
+                    <figure class="w-1/2 text-center">
+                        <img src="screenshots/app-mobile-sources.png" alt="Источники на телефоне" class="rounded-xl w-full border border-white/10" loading="lazy">
+                        <figcaption class="text-xs text-gray-400 pt-2">Источники на телефоне</figcaption>
+                    </figure>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Pricing -->
+    <section id="pricing" class="py-16 sm:py-24 bg-[#0a0a0a]">
+        <div class="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div class="text-center mb-10 sm:mb-14">
+                <h2 class="text-3xl md:text-4xl font-bold mb-4" id="pricing-title" style="color: #ffffff;">Тарифы</h2>
+                <p class="text-base sm:text-lg" id="pricing-subtitle" style="color: #9ca3af;">Начните бесплатно. ИИ и генерацию картинок включим на Pro.</p>
+            </div>
+            <div id="pricing-grid" class="grid grid-cols-1 md:grid-cols-3 gap-6"></div>
+            <p class="text-center text-sm text-gray-500 mt-8">Стоимость и срок Pro/Business — в Telegram. Отвечаем в течение дня.</p>
+        </div>
+    </section>
+
+    <!-- What's new -->
+    <section id="whats-new" class="pb-16 sm:pb-20 px-4 bg-[#0a0a0a]">
         <div class="max-w-4xl mx-auto">
             <div class="glass rounded-2xl p-6 sm:p-8">
                 <div class="flex flex-wrap items-center gap-3 mb-5">
@@ -90,24 +213,13 @@
                     <span class="ml-auto text-xs sm:text-sm px-3 py-1 rounded-full bg-blue-500/20 text-blue-300" id="changelog-date"></span>
                 </div>
                 <ul id="changelog-list" class="space-y-3"></ul>
+                <a href="https://github.com/osdal/tg-forwarder/commits/main" target="_blank" rel="noopener" class="inline-block text-sm text-blue-400 hover:text-blue-300 mt-5">Все изменения на GitHub →</a>
             </div>
         </div>
     </section>
 
-    <!-- Features -->
-    <section id="features" class="py-16 sm:py-24 bg-[#0f0f0f]">
-        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-            <div class="text-center mb-12 sm:mb-16">
-                <h2 class="text-3xl md:text-4xl font-bold mb-4" id="features-title" style="color: #ffffff;">Всё, что нужно для роста канала</h2>
-                <p class="text-base sm:text-lg" id="features-subtitle" style="color: #9ca3af;">Перестань тратить часы на рутину. Доверь это автоматизации.</p>
-            </div>
-            <!-- Сетка: 1 колонка на телефоне, 2 на планшете, 3 на десктопе -->
-            <div id="features-grid" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 sm:gap-8"></div>
-        </div>
-    </section>
-
-    <!-- FAQ Section -->
-    <section id="faq" class="py-16 sm:py-24 bg-[#0a0a0a]">
+    <!-- FAQ -->
+    <section id="faq" class="py-16 sm:py-24 bg-[#0f0f0f]">
         <div class="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8">
             <div class="text-center mb-10 sm:mb-12">
                 <h2 class="text-3xl md:text-4xl font-bold mb-4" id="faq-title" style="color: #ffffff;">Часто задаваемые вопросы</h2>
@@ -116,44 +228,60 @@
         </div>
     </section>
 
-    <!-- Contact Section -->
-    <section id="contact" class="py-16 sm:py-24 bg-[#0f0f0f]">
+    <!-- Contact -->
+    <section id="contact" class="py-16 sm:py-24 bg-[#0a0a0a]">
         <div class="max-w-4xl mx-auto px-4 text-center">
             <h2 class="text-3xl md:text-4xl font-bold mb-4" style="color: #ffffff;">Остались вопросы?</h2>
-            <p class="text-base sm:text-lg mb-8 sm:mb-10" style="color: #9ca3af;">Напишите нам удобным способом, и мы поможем с установкой и настройкой.</p>
-            
-            <!-- Кнопки контактов: вертикально на мобилке, горизонтально на десктопе -->
-            <div id="contact-buttons" class="flex flex-col sm:flex-row gap-4 justify-center items-center px-4">
-                <!-- Генерируется скриптом -->
+            <p class="text-base sm:text-lg mb-8 sm:mb-10" style="color: #9ca3af;">Поможем с установкой, подберём тариф и ответим на любые вопросы.</p>
+            <div id="contact-buttons" class="flex flex-col sm:flex-row gap-4 justify-center items-center px-4"></div>
+        </div>
+    </section>
+
+    <!-- CTA -->
+    <section class="py-16 sm:py-24 relative overflow-hidden">
+        <div class="absolute inset-0 bg-gradient-to-r from-blue-600/20 to-purple-600/20"></div>
+        <div class="max-w-4xl mx-auto text-center px-4 relative z-10">
+            <h2 class="text-3xl sm:text-4xl font-bold mb-6" id="cta-title" style="color: #ffffff;">Готовы автоматизировать канал?</h2>
+            <p class="text-lg sm:text-xl mb-8 sm:mb-10" id="cta-subtitle" style="color: #9ca3af;">Скачайте архив, получите бесплатный ключ и запустите на своём сервере. Данные останутся только у вас.</p>
+            <div class="flex flex-col sm:flex-row gap-3 justify-center">
+                <a href="latest.zip" download data-goal="download_zip" class="w-full sm:w-auto bg-white text-black px-10 py-4 rounded-xl font-bold text-lg hover:bg-gray-200 transition">Скачать программу</a>
+                <a href="https://t.me/osdal?text=Здравствуйте!%20Хочу%20получить%20ключ%20TG%20Forwarder" target="_blank" rel="noopener" data-goal="click_telegram_key" class="w-full sm:w-auto glass hover:bg-white/10 text-white px-10 py-4 rounded-xl font-bold text-lg transition">Получить ключ в Telegram</a>
             </div>
         </div>
     </section>
 
-    <!-- CTA Section -->
-    <section class="py-16 sm:py-24 relative overflow-hidden">
-        <div class="absolute inset-0 bg-gradient-to-r from-blue-600/20 to-purple-600/20"></div>
-        <div class="max-w-4xl mx-auto text-center px-4 relative z-10">
-            <h2 class="text-3xl sm:text-4xl font-bold mb-6" id="cta-title" style="color: #ffffff;">Готов автоматизировать свой канал?</h2>
-            <p class="text-lg sm:text-xl mb-8 sm:mb-10" id="cta-subtitle" style="color: #9ca3af;">Установка занимает 5 минут. Работает на вашем собственном сервере. Данные только у вас.</p>
-            <a href="latest.zip" download class="w-full sm:w-auto inline-block bg-white text-black px-10 py-4 rounded-xl font-bold text-lg hover:bg-gray-200 transition">
-                Скачать программу
-            </a>
-        </div>
-    </section>
-
     <!-- Footer -->
-    <footer class="border-t border-white/10 py-8 sm:py-12 text-center px-4" id="footer-text" style="color: #9ca3af;">
-        <p class="text-sm sm:text-base">© 2026 TG Forwarder. Сделано с ❤️ для Telegram-creators.</p>
+    <footer class="border-t border-white/10 py-8 sm:py-12 text-center px-4" style="color: #9ca3af;">
+        <p class="text-sm sm:text-base" id="footer-text">© 2026 TG Forwarder. Сделано с ❤️ для Telegram-creators.</p>
+        <p class="text-xs text-gray-600 mt-2">Self-hosted · Docker · <a href="https://github.com/osdal/tg-forwarder" target="_blank" rel="noopener" class="hover:text-gray-400">GitHub</a></p>
     </footer>
 
-    <!-- Скрипт для загрузки данных из JSON (Pages CMS) и работы меню -->
     <script>
-        // --- ЛОГИКА МОБИЛЬНОГО МЕНЮ ---
+        // --- МОБИЛЬНОЕ МЕНЮ ---
         const btn = document.getElementById('mobile-menu-btn');
         const menu = document.getElementById('mobile-menu');
-        btn.addEventListener('click', () => {
-            menu.classList.toggle('hidden');
+        btn.addEventListener('click', () => menu.classList.toggle('hidden'));
+
+        // --- ЦЕЛИ АНАЛИТИКИ ---
+        function goal(name) {
+            if (typeof ym === 'function' && window.__metrikaId) {
+                ym(window.__metrikaId, 'reachGoal', name);
+            }
+        }
+        document.addEventListener('click', (e) => {
+            const el = e.target.closest('[data-goal]');
+            if (el) goal(el.dataset.goal);
         });
+
+        // --- АНАЛИТИКА (включается, если задан metrika_id) ---
+        function initMetrika(id) {
+            if (!id) return;
+            window.__metrikaId = id;
+            (function(m,e,t,r,i,k,a){m[i]=m[i]||function(){(m[i].a=m[i].a||[]).push(arguments)};
+            m[i].l=1*new Date();k=e.createElement(t),a=e.getElementsByTagName(t)[0],k.async=1,k.src=r,a.parentNode.insertBefore(k,a)})
+            (window, document, "script", "https://mc.yandex.ru/metrika/tag.js", "ym");
+            ym(id, "init", { clickmap:true, trackLinks:true, accurateTrackBounce:true, webvisor:true });
+        }
 
         document.addEventListener('DOMContentLoaded', async () => {
             try {
@@ -161,53 +289,40 @@
                 if (!response.ok) throw new Error('Ошибка загрузки данных');
                 const data = await response.json();
 
-                // --- ОТРИСОВКА МЕНЮ (ДЕСКТОП + МОБИЛКА) ---
+                // --- МЕНЮ ---
                 const desktopNav = document.getElementById('nav-links-desktop');
                 const mobileNav = document.getElementById('nav-links-mobile');
-                
                 if (data.nav_links && data.nav_links.length > 0) {
-                    // Десктоп
-                    desktopNav.innerHTML = data.nav_links.map(link => `
-                        <a href="${link.url}" class="hover:text-blue-400 transition">${link.name}</a>
-                    `).join('');
-                    
-                    // Мобилка
-                    mobileNav.innerHTML = data.nav_links.map(link => `
-                        <a href="${link.url}" class="block px-3 py-2 rounded-md text-base font-medium hover:text-blue-400 hover:bg-white/5 transition">${link.name}</a>
-                    `).join('');
+                    desktopNav.innerHTML = data.nav_links.map(link =>
+                        `<a href="${link.url}" class="hover:text-blue-400 transition">${link.name}</a>`).join('');
+                    mobileNav.innerHTML = data.nav_links.map(link =>
+                        `<a href="${link.url}" class="block px-3 py-2 rounded-md text-base font-medium hover:text-blue-400 hover:bg-white/5 transition">${link.name}</a>`).join('');
                 }
 
-                // --- ПРИМЕНЕНИЕ ЦВЕТОВ ---
+                // --- ЦВЕТА ---
                 const body = document.body;
                 if (data.bg_color) body.style.backgroundColor = data.bg_color;
-
                 if (data.hero_title_color) {
                     document.getElementById('hero-title').style.color = data.hero_title_color;
                     document.getElementById('nav-logo').style.color = data.hero_title_color;
                 }
-                if (data.features_title_color) {
-                    document.getElementById('features-title').style.color = data.features_title_color;
-                    document.getElementById('cta-title').style.color = data.features_title_color;
-                    document.getElementById('faq-title').style.color = data.features_title_color;
-                }
+                ['features-title', 'cta-title', 'faq-title', 'steps-title', 'gallery-title', 'pricing-title'].forEach(id => {
+                    if (data.features_title_color) document.getElementById(id).style.color = data.features_title_color;
+                });
                 if (data.hero_subtitle_color) document.getElementById('hero-subtitle').style.color = data.hero_subtitle_color;
                 if (data.features_subtitle_color) {
-                    document.getElementById('features-subtitle').style.color = data.features_subtitle_color;
-                    document.getElementById('cta-subtitle').style.color = data.features_subtitle_color;
-                    document.getElementById('footer-text').style.color = data.features_subtitle_color;
+                    ['features-subtitle', 'cta-subtitle', 'footer-text', 'steps-subtitle', 'gallery-subtitle', 'pricing-subtitle'].forEach(id => {
+                        const el = document.getElementById(id);
+                        if (el) el.style.color = data.features_subtitle_color;
+                    });
                 }
 
                 // --- ЗАГОЛОВОК ---
                 const titleEl = document.getElementById('hero-title');
-                if (data.hero_title) titleEl.innerHTML = data.hero_title; 
-                
-                // Применяем кастомные классы размера/шрифта, если они заданы в CMS
+                if (data.hero_title) titleEl.innerHTML = data.hero_title;
                 if (data.hero_title_size) {
-                    // Удаляем старые классы размера (включая sm:/md:), чтобы не конфликтовали
-                    titleEl.className = titleEl.className
-                        .split(' ')
-                        .filter(c => c && !/^(sm:|md:|lg:|xl:)?text-\d+xl$/.test(c))
-                        .join(' ');
+                    titleEl.className = titleEl.className.split(' ')
+                        .filter(c => c && !/^(sm:|md:|lg:|xl:)?text-\d+xl$/.test(c)).join(' ');
                     data.hero_title_size.split(' ').filter(Boolean).forEach(c => titleEl.classList.add(c));
                 }
                 if (data.hero_title_weight) titleEl.classList.add(data.hero_title_weight);
@@ -217,17 +332,55 @@
                 const subTitleEl = document.getElementById('hero-subtitle');
                 if (data.hero_subtitle) subTitleEl.textContent = data.hero_subtitle;
                 if (data.hero_subtitle_size) {
-                    subTitleEl.className = subTitleEl.className
-                        .split(' ')
-                        .filter(c => c && !/^(sm:|md:|lg:|xl:)?text-\d+xl$/.test(c))
-                        .join(' ');
+                    subTitleEl.className = subTitleEl.className.split(' ')
+                        .filter(c => c && !/^(sm:|md:|lg:|xl:)?text-\d+xl$/.test(c)).join(' ');
                     data.hero_subtitle_size.split(' ').filter(Boolean).forEach(c => subTitleEl.classList.add(c));
                 }
-                if (data.hero_subtitle_font) subTitleEl.classList.add(data.hero_subtitle_font);
 
-                // --- КНОПКА ---
+                // --- КНОПКА И БЕЙДЖ ---
                 if (data.hero_btn_text) document.getElementById('hero-btn-text').textContent = data.hero_btn_text;
                 if (data.hero_badge) document.getElementById('hero-badge').textContent = data.hero_badge;
+
+                // --- КАК ЭТО РАБОТАЕТ ---
+                const stepsGrid = document.getElementById('steps-grid');
+                if (data.steps && data.steps.length > 0) {
+                    stepsGrid.innerHTML = data.steps.map((s, i) => `
+                        <div class="glass p-6 sm:p-8 rounded-2xl relative">
+                            <div class="w-10 h-10 rounded-full bg-blue-600 text-white font-bold flex items-center justify-center mb-5">${i + 1}</div>
+                            <h3 class="text-lg font-bold mb-2" style="color: ${data.card_title_color || '#ffffff'}">${s.title}</h3>
+                            <p class="text-sm" style="color: ${data.card_desc_color || '#9ca3af'}">${s.description}</p>
+                        </div>`).join('');
+                }
+
+                // --- ВОЗМОЖНОСТИ ---
+                const grid = document.getElementById('features-grid');
+                if (data.features && data.features.length > 0) {
+                    grid.innerHTML = data.features.map(f => `
+                        <div class="glass p-6 sm:p-8 rounded-2xl hover:bg-white/10 transition duration-300">
+                            <div class="flex items-start justify-between mb-6">
+                                <div class="w-12 h-12 bg-blue-500/20 rounded-lg flex items-center justify-center text-2xl">${f.icon}</div>
+                                ${f.badge ? `<span class="text-[11px] font-bold px-2 py-1 rounded-full ${f.badge === 'Pro' ? 'bg-purple-500/20 text-purple-300' : 'bg-green-500/20 text-green-300'}">${f.badge}</span>` : ''}
+                            </div>
+                            <h3 class="text-xl font-bold mb-3" style="color: ${data.card_title_color || '#ffffff'}">${f.title}</h3>
+                            <p style="color: ${data.card_desc_color || '#9ca3af'}">${f.description}</p>
+                        </div>`).join('');
+                }
+
+                // --- ТАРИФЫ ---
+                const pricingGrid = document.getElementById('pricing-grid');
+                if (data.pricing && data.pricing.length > 0) {
+                    pricingGrid.innerHTML = data.pricing.map(p => `
+                        <div class="glass rounded-2xl p-6 sm:p-8 flex flex-col ${p.highlight ? 'ring-2 ring-blue-500/60' : ''}">
+                            ${p.highlight ? '<span class="self-start text-[11px] font-bold px-2 py-1 rounded-full bg-blue-500/20 text-blue-300 mb-3">Популярный</span>' : ''}
+                            <h3 class="text-xl font-bold mb-1" style="color: ${data.card_title_color || '#ffffff'}">${p.name}</h3>
+                            <div class="text-3xl font-extrabold mb-4">${p.price}</div>
+                            <ul class="space-y-2 text-sm mb-6 flex-grow" style="color: ${data.card_desc_color || '#9ca3af'}">
+                                ${p.features.map(x => `<li class="flex gap-2"><span class="text-green-400">✓</span><span>${x}</span></li>`).join('')}
+                            </ul>
+                            <a href="${p.cta_url}" ${p.cta_url.startsWith('http') ? 'target="_blank" rel="noopener"' : 'download'} data-goal="${p.cta_url.startsWith('http') ? 'click_telegram_key' : 'download_zip'}"
+                               class="block text-center px-5 py-3 rounded-xl font-bold transition ${p.highlight ? 'bg-blue-600 hover:bg-blue-700 text-white' : 'bg-white/10 hover:bg-white/20 text-white'}">${p.cta}</a>
+                        </div>`).join('');
+                }
 
                 // --- ЧТО НОВОГО ---
                 const clTitle = document.getElementById('changelog-title');
@@ -238,45 +391,43 @@
                 if (data.changelog && data.changelog.length > 0) {
                     clList.innerHTML = data.changelog.map(item => `
                         <li class="flex gap-3 text-sm sm:text-base" style="color: ${data.card_desc_color || '#9ca3af'}">
-                            <span class="text-blue-400 shrink-0">•</span>
-                            <span>${item}</span>
-                        </li>
-                    `).join('');
+                            <span class="text-blue-400 shrink-0">•</span><span>${item}</span>
+                        </li>`).join('');
                 } else {
                     document.getElementById('whats-new').style.display = 'none';
                 }
 
-                // --- БЛОКИ ВОЗМОЖНОСТЕЙ ---
-                const grid = document.getElementById('features-grid');
-                if (data.features && data.features.length > 0) {
-                    grid.innerHTML = data.features.map(f => `
-                        <div class="glass p-6 sm:p-8 rounded-2xl hover:bg-white/10 transition duration-300">
-                            <div class="w-12 h-12 bg-blue-500/20 rounded-lg flex items-center justify-center text-2xl mb-6">${f.icon}</div>
-                            <h3 class="text-xl font-bold mb-3" style="color: ${data.card_title_color || '#ffffff'}">${f.title}</h3>
-                            <p style="color: ${data.card_desc_color || '#9ca3af'}">${f.description}</p>
-                        </div>
-                    `).join('');
-                }
-
-                // --- ОТРИСОВКА FAQ ---
+                // --- FAQ ---
                 if (data.faq_title) document.getElementById('faq-title').textContent = data.faq_title;
                 const faqList = document.getElementById('faq-list');
                 if (data.faq_items && data.faq_items.length > 0) {
                     faqList.innerHTML = data.faq_items.map(item => `
                         <div class="glass p-5 sm:p-6 rounded-xl">
                             <h3 class="text-lg font-bold mb-2" style="color: ${data.card_title_color || '#ffffff'}">${item.question}</h3>
-                            <p style="color: ${data.card_desc_color || '#9ca3af'}">${item.answer}</p>
-                        </div>
-                    `).join('');
+                            <p class="text-sm sm:text-base" style="color: ${data.card_desc_color || '#9ca3af'}">${item.answer}</p>
+                        </div>`).join('');
+
+                    // FAQPage JSON-LD
+                    const ld = document.createElement('script');
+                    ld.type = 'application/ld+json';
+                    ld.textContent = JSON.stringify({
+                        "@context": "https://schema.org",
+                        "@type": "FAQPage",
+                        "mainEntity": data.faq_items.map(q => ({
+                            "@type": "Question",
+                            "name": q.question,
+                            "acceptedAnswer": { "@type": "Answer", "text": q.answer.replace(/<[^>]+>/g, '') }
+                        }))
+                    });
+                    document.head.appendChild(ld);
                 }
 
-                // --- ОТРИСОВКА КОНТАКТОВ ---
+                // --- КОНТАКТЫ ---
                 const contactBtns = document.getElementById('contact-buttons');
                 let contactHtml = '';
-                
                 if (data.contact_telegram) {
                     contactHtml += `
-                        <a href="https://t.me/${data.contact_telegram}" target="_blank" class="w-full sm:w-auto bg-blue-500 hover:bg-blue-600 text-white px-8 py-4 rounded-xl font-bold text-lg transition flex items-center justify-center gap-3 shadow-lg shadow-blue-500/20">
+                        <a href="https://t.me/${data.contact_telegram}" target="_blank" rel="noopener" data-goal="click_telegram" class="w-full sm:w-auto bg-blue-500 hover:bg-blue-600 text-white px-8 py-4 rounded-xl font-bold text-lg transition flex items-center justify-center gap-3 shadow-lg shadow-blue-500/20">
                             <svg class="w-6 h-6" fill="currentColor" viewBox="0 0 24 24"><path d="M9.78 18.65l.28-4.23 7.68-6.92c.34-.31-.07-.46-.52-.19L7.74 13.3 3.64 12c-.88-.25-.89-.86.2-1.3l15.97-6.16c.73-.33 1.43.18 1.15 1.3l-2.72 12.81c-.19.91-.74 1.13-1.5.71L12.6 16.3l-1.99 1.93c-.23.23-.42.42-.83.42z"/></svg>
                             Написать в Telegram
                         </a>`;
@@ -288,12 +439,10 @@
                             Написать на Email
                         </a>`;
                 }
-                
-                if (contactHtml) {
-                    contactBtns.innerHTML = contactHtml;
-                } else {
-                    contactBtns.innerHTML = '<p class="text-gray-400">Контактная информация скоро появится.</p>';
-                }
+                contactBtns.innerHTML = contactHtml || '<p class="text-gray-400">Контактная информация скоро появится.</p>';
+
+                // --- АНАЛИТИКА ---
+                initMetrika(data.metrika_id);
             } catch (error) {
                 console.error('Не удалось загрузить данные CMS:', error);
             }
