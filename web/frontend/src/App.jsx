@@ -642,6 +642,7 @@ function App() {
                 <option value="owner">👑 Owner</option>
                 <option value="business">Business</option>
                 <option value="pro">Pro</option>
+                <option value="starter">Starter</option>
                 <option value="free">Free</option>
               </select>
             )}
@@ -794,7 +795,7 @@ function App() {
               <div className="w-full sm:w-auto">
                 <label className="block text-xs font-bold text-gray-600 mb-1">Тариф</label>
                 <select className="w-full sm:w-auto p-2 border rounded" value={newLicPlan} onChange={e => setNewLicPlan(e.target.value)}>
-                  <option value="free">Free</option><option value="pro">Pro</option><option value="business">Business</option>
+                  <option value="free">Free</option><option value="starter">Starter</option><option value="pro">Pro</option><option value="business">Business</option>
                 </select>
               </div>
               <div className="w-full sm:w-auto">

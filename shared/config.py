@@ -10,6 +10,7 @@ PUBLIC_KEY_B64 = "DbDMH8BpoqPV+N/abLYanCaHOsIX2KaECp/M/V2oJ6o="
 
 DEFAULT_PLANS = {
     "free":     {"max_sources": 5,  "ai_enabled": False, "image_gen_enabled": False},
+    "starter":  {"max_sources": 15, "ai_enabled": True,  "image_gen_enabled": False},
     "pro":      {"max_sources": 50, "ai_enabled": True,  "image_gen_enabled": True},
     "business": {"max_sources": -1, "ai_enabled": True,  "image_gen_enabled": True},
     "owner":    {"max_sources": -1, "ai_enabled": True,  "image_gen_enabled": True},
