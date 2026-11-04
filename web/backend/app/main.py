@@ -6,10 +6,8 @@ import uuid
 import hmac
 import hashlib
 import jwt
-import base64
 import json
 from datetime import datetime, timedelta, timezone
-from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 
 from fastapi import FastAPI, HTTPException, File, UploadFile, Depends, Header
 from fastapi.middleware.cors import CORSMiddleware
@@ -23,6 +21,7 @@ from telethon.sessions import StringSession
 from telethon.tl.types import Channel
 
 from shared.config import get_settings, license_info, LicenseInfo, DEFAULT_PLANS
+from shared.licensing import sign_license
 from shared.db import SessionLocal
 from shared.models import Post, PostStatus, PostMedia, Template, PostTemplate, TemplateFolder, Source, SourceTemplate, MediaLibrary, AppSettings, ClientLicense
 from shared.publisher import publish_post_to_channel
@@ -166,21 +165,16 @@ async def get_licenses(_=Depends(get_current_owner)):
 
 @app.post("/api/admin/licenses")
 async def create_license(data: LicenseCreate, _=Depends(get_current_owner)):
-    if not settings.license_private_key: raise HTTPException(status_code=500, detail="Приватный ключ не настроен.")
-    if data.plan not in DEFAULT_PLANS: raise HTTPException(status_code=400, detail="Неверный тариф.")
+    if data.plan not in DEFAULT_PLANS or data.plan == "owner":
+        raise HTTPException(status_code=400, detail="Неверный тариф.")
     try:
-        private_key = Ed25519PrivateKey.from_private_bytes(base64.b64decode(settings.license_private_key))
-        expires = (datetime.now() + timedelta(days=data.days)).isoformat()
-        payload = {"client": data.client_name, "expires": expires, "plan": data.plan, "limits": DEFAULT_PLANS[data.plan]}
-        payload_b64 = base64.b64encode(json.dumps(payload).encode()).decode()
-        signature = private_key.sign(payload_b64.encode())
-        signature_b64 = base64.b64encode(signature).decode()
-        lic_key = f"{payload_b64}.{signature_b64}"
-        
+        lic_key, expires = sign_license(data.client_name, data.plan, data.days)
         async with SessionLocal() as session:
-            l = ClientLicense(client_name=data.client_name, license_key=lic_key, plan=data.plan, expires_at=datetime.fromisoformat(expires))
+            l = ClientLicense(client_name=data.client_name, license_key=lic_key, plan=data.plan, expires_at=expires)
             session.add(l); await session.commit()
             return {"status": "ok", "license_key": lic_key}
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
     except Exception as e: raise HTTPException(status_code=500, detail=str(e))
 
 @app.patch("/api/admin/licenses/{lic_id}/toggle")

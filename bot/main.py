@@ -18,7 +18,8 @@ from sqlalchemy.orm import selectinload
 
 from shared.config import get_settings
 from shared.db import SessionLocal
-from shared.models import Post, PostStatus, TargetChannel, Source, AppSettings
+from shared.models import Post, PostStatus, TargetChannel, Source, AppSettings, ClientLicense
+from shared.licensing import sign_license, format_limits, TRIAL_PLAN, TRIAL_DAYS
 from shared.storage import load_media_bytes, mark_media_published
 from shared.publisher import publish_post_to_channel
 from shared.ai_helper import translate_text, rewrite_text, generate_text
@@ -136,7 +137,131 @@ async def poll_cleanup_trash() -> None:
 @dp.message(Command("start"))
 async def cmd_start(message: Message) -> None:
     if message.from_user.id != settings.admin_telegram_id: return
-    await message.answer("👋 Привет! Я бот для управления публикациями.")
+    await message.answer(
+        "👋 Привет! Я бот для управления публикациями.\n\n"
+        "<b>Лицензии:</b>\n"
+        "/key &lt;id&gt; &lt;plan&gt; &lt;days&gt; [имя] — выдать ключ\n"
+        "/trial &lt;id&gt; — 14 дней Pro\n"
+        "/keys — последние 10 лицензий"
+    )
+
+# --- ЛИЦЕНЗИИ (ТОЛЬКО OWNER) ---
+def build_license_message(client_name: str, plan: str, key: str, expires: datetime) -> str:
+    return (
+        f"🎟 <b>Лицензия TG Forwarder</b>\n\n"
+        f"Клиент: <b>{client_name}</b>\n"
+        f"Тариф: <b>{plan.upper()}</b>\n"
+        f"Действует до: <b>{expires.strftime('%d.%m.%Y')}</b>\n"
+        f"Лимиты: {format_limits(plan)}\n\n"
+        f"Ключ (вставьте в <code>.env</code> → <code>LICENSE_KEY</code>):\n"
+        f"<code>{key}</code>\n\n"
+        f"Затем перезапустите контейнеры: <code>docker compose up -d</code>\n"
+        f"Ключ персональный — не публикуйте его."
+    )
+
+class LicenseDeliveryFailed(Exception):
+    """Ключ создан и сохранён, но отправить клиенту не удалось."""
+
+    def __init__(self, key: str, expires: datetime, reason: str):
+        self.key = key
+        self.expires = expires
+        self.reason = reason
+        super().__init__(reason)
+
+async def issue_and_send(target_id: int, client_name: str, plan: str, days: int) -> tuple[str, datetime]:
+    key, expires = sign_license(client_name, plan, days)
+    async with SessionLocal() as session:
+        session.add(ClientLicense(
+            client_name=client_name,
+            license_key=key,
+            plan=plan,
+            expires_at=expires,
+        ))
+        await session.commit()
+    try:
+        await bot.send_message(chat_id=target_id, text=build_license_message(client_name, plan, key, expires))
+    except Exception as e:
+        log.warning("Не удалось доставить ключ %s: %s", target_id, e)
+        raise LicenseDeliveryFailed(key, expires, str(e)) from e
+    return key, expires
+
+@dp.message(Command("key"))
+async def cmd_issue_key(message: Message) -> None:
+    """/key <telegram_id> <plan> <days> [имя клиента]"""
+    if message.from_user.id != settings.admin_telegram_id: return
+    parts = (message.text or "").split(maxsplit=4)
+    if len(parts) < 4:
+        return await message.answer(
+            "Формат: <code>/key 123456789 pro 30 Имя клиента</code>\n"
+            "Тарифы: free, starter, pro, business."
+        )
+    try:
+        target_id = int(parts[1])
+        plan = parts[2].strip().lower()
+        days = int(parts[3])
+    except ValueError:
+        return await message.answer("❌ ID и срок должны быть числами.")
+    client_name = parts[4].strip() if len(parts) > 4 else f"tg:{target_id}"
+
+    try:
+        key, expires = await issue_and_send(target_id, client_name, plan, days)
+    except ValueError as e:
+        return await message.answer(f"❌ {e}")
+    except LicenseDeliveryFailed as e:
+        return await message.answer(
+            f"⚠️ Ключ создан, но доставить в <code>{target_id}</code> не удалось "
+            f"(пользователь не начинал чат с ботом?).\nПерешлите вручную:\n"
+            f"<code>{e.key}</code>"
+        )
+    except Exception as e:
+        log.exception("Ошибка выдачи ключа")
+        return await message.answer(f"❌ Не удалось выдать ключ: {e}")
+
+    await message.answer(
+        f"✅ Ключ выдан и отправлен в <code>{target_id}</code>\n"
+        f"{client_name} · {plan.upper()} · до {expires.strftime('%d.%m.%Y')}"
+    )
+
+@dp.message(Command("trial"))
+async def cmd_trial(message: Message) -> None:
+    """Небольшая команда для друзей: /trial <telegram_id>"""
+    if message.from_user.id != settings.admin_telegram_id: return
+    parts = (message.text or "").split(maxsplit=2)
+    if len(parts) < 2:
+        return await message.answer("Формат: <code>/trial 123456789</code>")
+    try:
+        target_id = int(parts[1])
+    except ValueError:
+        return await message.answer("❌ ID должен быть числом.")
+    client_name = parts[2].strip() if len(parts) > 2 else f"trial:{target_id}"
+    try:
+        key, expires = await issue_and_send(target_id, client_name, TRIAL_PLAN, TRIAL_DAYS)
+    except LicenseDeliveryFailed as e:
+        return await message.answer(
+            f"⚠️ Триал создан, но доставить в <code>{target_id}</code> не удалось.\n"
+            f"Перешлите вручную:\n<code>{e.key}</code>"
+        )
+    except Exception as e:
+        log.exception("Ошибка выдачи триала")
+        return await message.answer(f"❌ Не удалось выдать триал: {e}")
+    await message.answer(
+        f"🎁 Триал выдан: {client_name} · {TRIAL_PLAN.upper()} · {TRIAL_DAYS} дн. · до {expires.strftime('%d.%m.%Y')}"
+    )
+
+@dp.message(Command("keys"))
+async def cmd_list_keys(message: Message) -> None:
+    if message.from_user.id != settings.admin_telegram_id: return
+    async with SessionLocal() as session:
+        result = await session.execute(select(ClientLicense).order_by(ClientLicense.id.desc()).limit(10))
+        rows = list(result.scalars())
+    if not rows:
+        return await message.answer("Лицензий пока нет.")
+    lines = [
+        f"<b>#{l.id}</b> {l.client_name} · {l.plan} · до {l.expires_at.strftime('%d.%m.%Y')}"
+        f"{'' if l.is_active else ' · выключена'}"
+        for l in rows
+    ]
+    await message.answer("Последние лицензии:\n" + "\n".join(lines))
 
 @dp.message(Command("cancel"))
 async def cmd_cancel(message: Message, state: FSMContext) -> None:
