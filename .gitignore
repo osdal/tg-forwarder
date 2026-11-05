@@ -33,6 +33,7 @@ yarn-error.log
 
 # Secrets & Environment
 .env
+.env.plausible
 .env.bak
 .env.*.local
 *.session

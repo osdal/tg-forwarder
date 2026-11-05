@@ -3,6 +3,11 @@ tg-forwarder.duckdns.org {
     reverse_proxy localhost:8080
 }
 
+# Plausible Analytics
+plausibl.duckdns.org {
+    reverse_proxy plausible:8000
+}
+
 # Новый блог на WordPress
 blog-tg.duckdns.org {
     reverse_proxy localhost:8081

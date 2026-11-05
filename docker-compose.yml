@@ -137,6 +137,37 @@ services:
     command: ["python", "-m", "collector.main"]
     restart: unless-stopped
 
+  plausible-db:
+    image: timescale/timescaledb:latest-pg16
+    container_name: tgf-plausible-db
+    restart: unless-stopped
+    env_file: .env.plausible
+    environment:
+      POSTGRES_PASSWORD: ${PLAUSIBLE_DB_PASSWORD}
+    volumes:
+      - plausible_db:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  plausible:
+    image: plausible/analytics:latest
+    container_name: tgf-plausible
+    restart: unless-stopped
+    env_file: .env.plausible
+    depends_on:
+      plausible-db:
+        condition: service_healthy
+    ports:
+      - "127.0.0.1:8003:8000"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
   frontend:
     build:
       context: ./web/frontend
@@ -155,3 +186,4 @@ volumes:
   pgdata:
   redis_data:
   minio_data:
+  plausible_db:
