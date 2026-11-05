@@ -3,13 +3,8 @@ tg-forwarder.duckdns.org {
     reverse_proxy localhost:8080
 }
 
-# Plausible Analytics
+# Umami Analytics (на домене plausibl.duckdns.org)
 plausibl.duckdns.org {
-    reverse_proxy plausible:8000
-}
-
-# Umami Analytics
-umami.duckdns.org {
     reverse_proxy umami:3000
 }
 
