@@ -143,7 +143,8 @@ services:
     restart: unless-stopped
     env_file: .env.plausible
     environment:
-      POSTGRES_PASSWORD: ${PLAUSIBLE_DB_PASSWORD}
+      POSTGRES_PASSWORD: ${PLAUSIBLE_POSTGRES_PASSWORD}
+      POSTGRES_DB: plausible
     volumes:
       - plausible_db:/var/lib/postgresql/data
     healthcheck:
@@ -152,18 +153,67 @@ services:
       timeout: 5s
       retries: 5
 
+  clickhouse:
+    image: clickhouse/clickhouse-server:latest
+    container_name: tgf-clickhouse
+    restart: unless-stopped
+    env_file: .env.plausible
+    environment:
+      CLICKHOUSE_DB: plausible
+      CLICKHOUSE_USER: ${CLICKHOUSE_USER:-plausible}
+      CLICKHOUSE_PASSWORD: ${CLICKHOUSE_PASSWORD:-changeme}
+      CLICKHOUSE_DEFAULT_ACCESS_MANAGEMENT: 1
+    volumes:
+      - clickhouse_data:/var/lib/clickhouse
+    ulimits:
+      nofile:
+        soft: 262144
+        hard: 262144
+    healthcheck:
+      test: ["CMD", "clickhouse-client", "--query", "SELECT 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
   plausible:
     image: plausible/analytics:latest
     container_name: tgf-plausible
     restart: unless-stopped
     env_file: .env.plausible
+    environment:
+      CLICKHOUSE_HOST: clickhouse
+      CLICKHOUSE_PORT: 8123
+      CLICKHOUSE_USER: ${CLICKHOUSE_USER}
+      CLICKHOUSE_PASSWORD: ${CLICKHOUSE_PASSWORD}
+      CLICKHOUSE_DB: plausible
     depends_on:
       plausible-db:
+        condition: service_healthy
+      clickhouse:
         condition: service_healthy
     ports:
       - "127.0.0.1:8003:8000"
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  umami:
+    image: ghcr.io/umami-software/umami:postgresql-latest
+    container_name: tgf-umami
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/umami
+      HASH_SALT: ${UMAMI_HASH_SALT}
+    depends_on:
+      db:
+        condition: service_healthy
+    ports:
+      - "127.0.0.1:3003:3000"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000/api/heartbeat"]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -187,3 +237,4 @@ volumes:
   redis_data:
   minio_data:
   plausible_db:
+  clickhouse_data:

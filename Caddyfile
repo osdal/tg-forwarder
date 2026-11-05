@@ -8,6 +8,11 @@ plausibl.duckdns.org {
     reverse_proxy plausible:8000
 }
 
+# Umami Analytics
+umami.duckdns.org {
+    reverse_proxy umami:3000
+}
+
 # Новый блог на WordPress
 blog-tg.duckdns.org {
     reverse_proxy localhost:8081
