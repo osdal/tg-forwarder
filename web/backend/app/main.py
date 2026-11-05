@@ -14,7 +14,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
-from sqlalchemy import select, func, case
+from sqlalchemy import select, func, case, update
 from sqlalchemy.orm import selectinload
 from telethon import TelegramClient
 from telethon.sessions import StringSession
@@ -23,7 +23,7 @@ from telethon.tl.types import Channel
 from shared.config import get_settings, license_info, LicenseInfo, DEFAULT_PLANS
 from shared.licensing import sign_license
 from shared.db import SessionLocal
-from shared.models import Post, PostStatus, PostMedia, Template, PostTemplate, TemplateFolder, Source, SourceTemplate, MediaLibrary, AppSettings, ClientLicense
+from shared.models import Post, PostStatus, PostMedia, Template, PostTemplate, TemplateFolder, Source, SourceTemplate, MediaLibrary, AppSettings, ClientLicense, TargetChannel
 from shared.publisher import publish_post_to_channel
 from shared.minio_client import get_minio
 from shared.ai_helper import translate_text, rewrite_text, generate_text, generate_image, list_image_models
@@ -303,7 +303,7 @@ async def dev_auth(data: DevLoginData):
 async def get_sources(_=Depends(get_current_admin)):
     async with SessionLocal() as session:
         result = await session.execute(select(Source).options(selectinload(Source.templates).selectinload(SourceTemplate.template)).order_by(Source.id))
-        return [{"id": s.id, "telegram_id": s.telegram_id, "title": s.title, "username": s.username, "enabled": s.enabled, "auto_publish": s.auto_publish, "auto_template_id": s.auto_template_id, "pipeline_json": s.pipeline_json, "templates": [{"id": st.template.id, "name": st.template.name} for st in s.templates]} for s in result.scalars().all()]
+        return [{"id": s.id, "telegram_id": s.telegram_id, "title": s.title, "username": s.username, "enabled": s.enabled, "auto_publish": s.auto_publish, "auto_template_id": s.auto_template_id, "pipeline_json": s.pipeline_json, "target_channel_id": s.target_channel_id, "templates": [{"id": st.template.id, "name": st.template.name} for st in s.templates]} for s in result.scalars().all()]
 
 class SourceCreate(BaseModel): channel_input: str
 
@@ -368,6 +368,86 @@ async def delete_source(source_id: int, _=Depends(get_current_admin)):
         source = (await session.execute(select(Source).where(Source.id == source_id))).scalar_one_or_none()
         if not source: raise HTTPException(status_code=404)
         await session.delete(source); await session.commit(); return {"status": "ok"}
+
+class SourceTargetUpdate(BaseModel):
+    target_channel_id: int | None = None
+
+@app.patch("/api/sources/{source_id}/target")
+async def set_source_target(source_id: int, data: SourceTargetUpdate, _=Depends(get_current_admin)):
+    async with SessionLocal() as session:
+        source = (await session.execute(select(Source).where(Source.id == source_id))).scalar_one_or_none()
+        if not source: raise HTTPException(status_code=404)
+        if data.target_channel_id:
+            target = (await session.execute(select(TargetChannel).where(TargetChannel.id == data.target_channel_id))).scalar_one_or_none()
+            if not target: raise HTTPException(status_code=404, detail="Целевой канал не найден")
+        source.target_channel_id = data.target_channel_id
+        await session.commit(); return {"status": "ok"}
+
+# --- ЦЕЛЕВЫЕ КАНАЛЫ ---
+class TargetCreate(BaseModel):
+    channel_input: str
+
+@app.get("/api/targets")
+async def get_targets(_=Depends(get_current_admin)):
+    async with SessionLocal() as session:
+        rows = (await session.execute(select(TargetChannel).order_by(TargetChannel.id))).scalars().all()
+        return [{"id": t.id, "telegram_id": t.telegram_id, "title": t.title, "username": t.username, "enabled": t.enabled} for t in rows]
+
+@app.post("/api/targets")
+async def add_target(data: TargetCreate, x_view_as: str = Header(None), _=Depends(get_current_admin)):
+    lic = get_effective_license(x_view_as)
+    max_targets = lic.get("max_target_channels", -1)
+    if max_targets != -1:
+        async with SessionLocal() as session:
+            count = await session.scalar(select(func.count(TargetChannel.id)))
+            if count >= max_targets:
+                raise HTTPException(status_code=403, detail=f"Достигнут лимит целевых каналов для тарифа '{lic.plan}' ({max_targets}).")
+
+    clean_input = data.channel_input.strip()
+    if clean_input.startswith('-100') and clean_input[1:].isdigit():
+        telegram_id = int(clean_input)
+        async with SessionLocal() as session:
+            if (await session.execute(select(TargetChannel).where(TargetChannel.telegram_id == telegram_id))).scalar_one_or_none():
+                raise HTTPException(status_code=400, detail="Канал уже добавлен")
+            target = TargetChannel(telegram_id=telegram_id, title=f"Канал {telegram_id}", username=f"private_{abs(telegram_id)}", enabled=True)
+            session.add(target); await session.commit(); return {"status": "ok", "id": target.id}
+    elif clean_input.isdigit():
+        raise HTTPException(status_code=400, detail="Укажите @username канала или ID вида -100...")
+
+    client = TelegramClient(StringSession(settings.collector_session), settings.api_id, settings.api_hash); await client.connect()
+    try:
+        entity = await client.get_entity(clean_input)
+        from telethon.utils import get_peer_id
+        telegram_id = get_peer_id(entity)
+        title = getattr(entity, 'title', None) or clean_input
+        username = getattr(entity, 'username', None) or f"private_{abs(telegram_id)}"
+        async with SessionLocal() as session:
+            if (await session.execute(select(TargetChannel).where(TargetChannel.telegram_id == telegram_id))).scalar_one_or_none():
+                raise HTTPException(status_code=400, detail="Канал уже добавлен")
+            target = TargetChannel(telegram_id=telegram_id, title=title, username=username, enabled=True)
+            session.add(target); await session.commit(); return {"status": "ok", "id": target.id}
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Ошибка: {str(e)}")
+    finally:
+        await client.disconnect()
+
+@app.patch("/api/targets/{target_id}/toggle")
+async def toggle_target(target_id: int, _=Depends(get_current_admin)):
+    async with SessionLocal() as session:
+        target = (await session.execute(select(TargetChannel).where(TargetChannel.id == target_id))).scalar_one_or_none()
+        if not target: raise HTTPException(status_code=404)
+        target.enabled = not target.enabled; await session.commit(); return {"status": "ok", "enabled": target.enabled}
+
+@app.delete("/api/targets/{target_id}")
+async def delete_target(target_id: int, _=Depends(get_current_admin)):
+    async with SessionLocal() as session:
+        target = (await session.execute(select(TargetChannel).where(TargetChannel.id == target_id))).scalar_one_or_none()
+        if not target: raise HTTPException(status_code=404)
+        await session.execute(update(Source).where(Source.target_channel_id == target_id).values(target_channel_id=None))
+        await session.execute(update(Post).where(Post.target_channel_id == target_id).values(target_channel_id=None))
+        await session.delete(target); await session.commit(); return {"status": "ok"}
 
 class AttachSourceTemplate(BaseModel): template_id: int
 

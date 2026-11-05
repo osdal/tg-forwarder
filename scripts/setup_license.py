@@ -30,7 +30,7 @@ def main():
         "client": "Owner",
         "expires": (datetime.datetime.now() + datetime.timedelta(days=36500)).isoformat(),
         "plan": "owner",
-        "limits": {"max_sources": -1, "ai_enabled": True, "image_gen_enabled": True},
+        "limits": {"max_sources": -1, "max_target_channels": -1, "ai_enabled": True, "image_gen_enabled": True},
     }
     payload_b64 = base64.b64encode(json.dumps(payload).encode()).decode()
     signature = private_key.sign(payload_b64.encode())

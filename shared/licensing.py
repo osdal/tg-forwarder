@@ -45,6 +45,7 @@ def sign_license(client_name: str, plan: str, days: int) -> tuple[str, datetime]
 def format_limits(plan: str) -> str:
     limits = DEFAULT_PLANS[plan]
     sources = "без ограничений" if limits["max_sources"] == -1 else limits["max_sources"]
+    targets = "без ограничений" if limits.get("max_target_channels", -1) == -1 else limits["max_target_channels"]
     ai = "да" if limits["ai_enabled"] else "нет"
     images = "да" if limits["image_gen_enabled"] else "нет"
-    return f"источники: {sources}, ИИ-редактор: {ai}, картинки: {images}"
+    return f"источники: {sources}, целевые каналы: {targets}, ИИ-редактор: {ai}, картинки: {images}"

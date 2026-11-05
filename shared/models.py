@@ -31,6 +31,7 @@ class Source(Base):
     auto_publish = Column(Boolean, default=False)
     auto_template_id = Column(Integer, ForeignKey("templates.id"), nullable=True)
     pipeline_json = Column(Text, nullable=True) # НОВОЕ ПОЛЕ
+    target_channel_id = Column(Integer, ForeignKey("target_channels.id", ondelete="SET NULL"), nullable=True)
     templates = relationship("SourceTemplate", back_populates="source", cascade="all, delete-orphan")
 
 class TargetChannel(Base):

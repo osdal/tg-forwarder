@@ -129,6 +129,10 @@ function App() {
   const [newSourceInput, setNewSourceInput] = useState("")
   const [addingSource, setAddingSource] = useState(false)
 
+  const [targets, setTargets] = useState([])
+  const [newTargetInput, setNewTargetInput] = useState("")
+  const [addingTarget, setAddingTarget] = useState(false)
+
   const [newLicClient, setNewLicClient] = useState("")
   const [newLicPlan, setNewLicPlan] = useState("pro")
   const [newLicDays, setNewLicDays] = useState(365)
@@ -178,7 +182,7 @@ function App() {
   const fetchData = async () => {
     if (!token) return
     try {
-      const [postsRes, trashRes, libRes, tplRes, foldRes, metRes, srcRes, licInfoRes, setRes] = await Promise.all([
+      const [postsRes, trashRes, libRes, tplRes, foldRes, metRes, srcRes, licInfoRes, setRes, tgtRes] = await Promise.all([
         fetchWithAuth('/api/posts?trash=false'),
         fetchWithAuth('/api/posts?trash=true'),
         fetchWithAuth('/api/media-library'),
@@ -187,11 +191,13 @@ function App() {
         fetchWithAuth('/api/metrics'),
         fetchWithAuth('/api/sources'),
         fetchWithAuth('/api/license/info'),
-        fetchWithAuth('/api/settings')
+        fetchWithAuth('/api/settings'),
+        fetchWithAuth('/api/targets')
       ])
       setPosts(await postsRes.json()); setTrashPosts(await trashRes.json());
       setMediaLib(await libRes.json()); setTemplates(await tplRes.json()); 
       setFolders(await foldRes.json()); setMetrics(await metRes.json()); setSources(await srcRes.json());
+      setTargets(await tgtRes.json());
       
       const licData = await licInfoRes.json();
       setLicense(licData);
@@ -541,6 +547,27 @@ function App() {
       await fetchWithAuth(`/api/sources/${id}`, { method: 'DELETE' }); fetchData(); 
     });
   }
+
+  const handleAddTarget = async (e) => {
+    e.preventDefault(); if (!newTargetInput) return; setAddingTarget(true);
+    try {
+      const res = await fetchWithAuth('/api/targets', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ channel_input: newTargetInput }) });
+      if (res.ok) { setNewTargetInput(""); fetchData(); } else showAlert(`Ошибка: ${(await res.json()).detail}`, "Ошибка", "error");
+    } catch (err) { showAlert(err.message, "Ошибка", "error"); } finally { setAddingTarget(false); }
+  }
+
+  const handleToggleTarget = async (id) => { await fetchWithAuth(`/api/targets/${id}/toggle`, { method: 'PATCH' }); fetchData(); }
+
+  const handleDeleteTarget = async (id) => {
+    showConfirm("Удалить целевой канал? Посты и источники, привязанные к нему, переключатся на канал по умолчанию.", async () => {
+      await fetchWithAuth(`/api/targets/${id}`, { method: 'DELETE' }); fetchData();
+    });
+  }
+
+  const handleSetSourceTarget = async (src, targetId) => {
+    await fetchWithAuth(`/api/sources/${src.id}/target`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ target_channel_id: targetId ? Number(targetId) : null }) });
+    fetchData();
+  }
   
   const openEditor = (post) => { setEditingPost(post); setEditText(post.text || ""); setWordCount(""); setPostButtons(post.buttons_json || []); setAiPrompt(""); setImagePrompt(""); setLastGeneratedMediaId(null); }
   const closeEditor = () => { setEditingPost(null); setEditText(""); setPostButtons([]); setShowLibSelector(false); setAiPrompt(""); setImagePrompt(""); setLastGeneratedMediaId(null); }
@@ -553,6 +580,8 @@ function App() {
   const imgEnabled = license?.limits?.image_gen_enabled ?? true
   const maxSources = license?.limits?.max_sources ?? 5
   const sourcesLimitReached = maxSources !== -1 && sources.length >= maxSources
+  const maxTargets = license?.limits?.max_target_channels ?? -1
+  const targetsLimitReached = maxTargets !== -1 && targets.length >= maxTargets
 
   if (!token) {
     return (
@@ -650,7 +679,7 @@ function App() {
             {license && viewAs === 'owner' && (
               <div className="flex items-center gap-2 bg-indigo-50 px-2 py-1 rounded border border-indigo-200">
                 <span className="text-xs font-bold text-indigo-700 uppercase">{license.plan}</span>
-                <span className="text-xs text-indigo-500">({maxSources === -1 ? '∞' : maxSources} ист.)</span>
+                <span className="text-xs text-indigo-500">({maxSources === -1 ? '∞' : maxSources} ист. · {maxTargets === -1 ? '∞' : maxTargets} кан.)</span>
               </div>
             )}
             
@@ -880,6 +909,34 @@ function App() {
             </form>
             {sourcesLimitReached && <p className="text-red-500 text-sm mt-2 font-medium">Достигнут лимит источников для тарифа '{license?.plan}' ({maxSources}).</p>}
           </div>
+          <div className="bg-white p-4 sm:p-6 rounded-lg shadow mb-8">
+            <div className="flex items-center justify-between mb-2">
+              <h2 className="text-xl font-bold">Целевые каналы</h2>
+              <span className="text-sm text-gray-500">{targets.length}{maxTargets === -1 ? '' : ` / ${maxTargets}`}</span>
+            </div>
+            <p className="text-sm text-gray-500 mb-4">Каналы, в которые публикуются посты. Бот должен быть администратором канала. Каждому источнику можно назначить свой канал.</p>
+            <form onSubmit={handleAddTarget} className="flex flex-col sm:flex-row gap-2">
+              <input type="text" placeholder="@channel_name или -100..." className="w-full sm:flex-grow p-3 border rounded-lg outline-none" value={newTargetInput} onChange={e => setNewTargetInput(e.target.value)} disabled={addingTarget || targetsLimitReached} />
+              <button type="submit" disabled={addingTarget || targetsLimitReached} className="w-full sm:w-auto bg-indigo-600 text-white px-6 py-3 rounded-lg font-bold disabled:opacity-50">Добавить</button>
+            </form>
+            {targetsLimitReached && <p className="text-red-500 text-sm mt-2 font-medium">Достигнут лимит целевых каналов для тарифа '{license?.plan}' ({maxTargets}).</p>}
+            {targets.length > 0 && (
+              <div className="mt-4 divide-y border rounded-lg">
+                {targets.map(t => (
+                  <div key={t.id} className="flex items-center justify-between gap-3 p-3">
+                    <div className="min-w-0">
+                      <div className="font-bold break-words">{t.title}</div>
+                      <div className="text-xs text-gray-500 break-all">@{t.username}</div>
+                    </div>
+                    <div className="flex items-center gap-2 shrink-0">
+                      <button onClick={() => handleToggleTarget(t.id)} className={`px-3 py-1 rounded-full text-xs font-bold ${t.enabled ? 'bg-green-100 text-green-800' : 'bg-gray-200 text-gray-600'}`}>{t.enabled ? 'Активен' : 'Отключен'}</button>
+                      <button onClick={() => handleDeleteTarget(t.id)} className="text-red-500 text-sm font-medium">Удалить</button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
           <div className="bg-white rounded-lg shadow overflow-hidden">
             <h2 className="text-xl font-bold p-4 border-b">Активные источники</h2>
 
@@ -901,6 +958,13 @@ function App() {
                     </label>
                     {src.auto_publish && <select value={src.auto_template_id || ""} onChange={(e) => handleSetAutoTemplate(src, e.target.value)} className="text-xs p-1.5 border rounded flex-grow"><option value="">-- Без шаблона --</option>{templates.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}</select>}
                   </div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm text-gray-600 shrink-0">Публиковать в:</span>
+                    <select value={src.target_channel_id || ""} onChange={(e) => handleSetSourceTarget(src, e.target.value)} className="text-xs p-1.5 border rounded flex-grow min-w-0">
+                      <option value="">По умолчанию</option>
+                      {targets.filter(t => t.enabled || t.id === src.target_channel_id).map(t => <option key={t.id} value={t.id}>{t.title}</option>)}
+                    </select>
+                  </div>
                   <div className="flex items-center justify-between gap-2">
                     <div className="flex gap-4">
                       <button onClick={() => setEditingSource(src)} className="text-blue-600 text-sm font-medium min-h-[40px] flex items-center">📎 Шаблоны ({src.templates?.length || 0})</button>
@@ -914,8 +978,8 @@ function App() {
 
             {/* Десктоп: таблица */}
             <div className="hidden md:block overflow-x-auto">
-              <table className="w-full text-left min-w-[800px]">
-                <thead><tr className="bg-gray-50 text-sm"><th className="p-4">Название</th><th className="p-4 text-center">Статус</th><th className="p-4 text-center">Авто-публикация</th><th className="p-4 text-center">Цепочка / Шаблоны</th><th className="p-4 text-right">Действия</th></tr></thead>
+              <table className="w-full text-left min-w-[950px]">
+                <thead><tr className="bg-gray-50 text-sm"><th className="p-4">Название</th><th className="p-4 text-center">Статус</th><th className="p-4 text-center">Авто-публикация</th><th className="p-4">Целевой канал</th><th className="p-4 text-center">Цепочка / Шаблоны</th><th className="p-4 text-right">Действия</th></tr></thead>
                 <tbody>
                   {sources.map(src => (
                     <tr key={src.id} className="border-b last:border-0 hover:bg-gray-50">
@@ -926,6 +990,12 @@ function App() {
                           <input type="checkbox" checked={src.auto_publish || false} onChange={(e) => handleToggleAutoPublish(src, e.target.checked)} className="w-5 h-5 cursor-pointer accent-indigo-600" />
                           {src.auto_publish && <select value={src.auto_template_id || ""} onChange={(e) => handleSetAutoTemplate(src, e.target.value)} className="text-xs p-1 border rounded w-full mt-1"><option value="">-- Без шаблона --</option>{templates.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}</select>}
                         </div>
+                      </td>
+                      <td className="p-4">
+                        <select value={src.target_channel_id || ""} onChange={(e) => handleSetSourceTarget(src, e.target.value)} className="text-xs p-1.5 border rounded w-full max-w-[180px]">
+                          <option value="">По умолчанию</option>
+                          {targets.filter(t => t.enabled || t.id === src.target_channel_id).map(t => <option key={t.id} value={t.id}>{t.title}</option>)}
+                        </select>
                       </td>
                       <td className="p-4 text-center flex justify-center gap-2">
                         <button onClick={() => setEditingSource(src)} className="text-blue-600 text-sm font-medium hover:underline">📎 ({src.templates?.length || 0})</button>

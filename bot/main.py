@@ -12,11 +12,11 @@ from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.fsm.storage.memory import MemoryStorage
 from aiogram.types import BufferedInputFile, CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup, Message
-from sqlalchemy import select
+from sqlalchemy import select, func
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.orm import selectinload
 
-from shared.config import get_settings
+from shared.config import get_settings, license_info
 from shared.db import SessionLocal
 from shared.models import Post, PostStatus, TargetChannel, Source, AppSettings, ClientLicense
 from shared.licensing import sign_license, format_limits, TRIAL_PLAN, TRIAL_DAYS
@@ -275,6 +275,13 @@ async def handle_forwarded_channel(message: Message) -> None:
     if chat.type not in ('channel', 'supergroup'): return
     async with SessionLocal() as session:
         if (await session.execute(select(Source).where(Source.telegram_id == chat.id))).scalar_one_or_none(): return
+        max_sources = license_info.get("max_sources", 5)
+        if max_sources != -1:
+            count = await session.scalar(select(func.count(Source.id)))
+            if count >= max_sources:
+                return await message.answer(
+                    f"❌ Достигнут лимит источников для тарифа '{license_info.plan}' ({max_sources})."
+                )
         session.add(Source(telegram_id=chat.id, title=chat.title, username=chat.username or f"private_{abs(chat.id)}", enabled=True))
         await session.commit()
     await message.answer(f"✅ Канал <b>{chat.title}</b> добавлен!")

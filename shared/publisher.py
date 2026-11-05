@@ -45,10 +45,24 @@ def split_text_into_chunks(text: str, limit: int) -> list[str]:
         parts.append(text)
     return parts
 
-async def get_first_target_channel() -> TargetChannel | None:
+async def get_target_channel(target_id: int | None = None) -> TargetChannel | None:
+    """Возвращает целевой канал по id, иначе первый активный."""
     async with SessionLocal() as session:
-        result = await session.execute(select(TargetChannel).where(TargetChannel.enabled == True).limit(1))
+        if target_id:
+            result = await session.execute(
+                select(TargetChannel).where(TargetChannel.id == target_id, TargetChannel.enabled == True)
+            )
+            target = result.scalar_one_or_none()
+            if target:
+                return target
+        result = await session.execute(
+            select(TargetChannel).where(TargetChannel.enabled == True).order_by(TargetChannel.id).limit(1)
+        )
         return result.scalar_one_or_none()
+
+
+async def get_first_target_channel() -> TargetChannel | None:
+    return await get_target_channel()
 
 def build_inline_keyboard(buttons_json: list | None) -> InlineKeyboardMarkup | None:
     if not buttons_json:
@@ -127,7 +141,7 @@ async def send_separate_template(chat_id: int, template: Template):
             sent_msg = await bot.send_message(chat_id=chat_id, text=part, reply_to_message_id=reply_to_id)
             sent_messages.append(sent_msg)
 
-async def publish_post_to_channel(post_id: int) -> tuple[bool, str]:
+async def publish_post_to_channel(post_id: int, target_id: int | None = None) -> tuple[bool, str]:
     async with SessionLocal() as session:
         result = await session.execute(
             select(Post)
@@ -143,7 +157,13 @@ async def publish_post_to_channel(post_id: int) -> tuple[bool, str]:
         if not post or post.status not in (PostStatus.NEW, PostStatus.APPROVED, PostStatus.SCHEDULED):
             return False, "Пост не найден или уже опубликован/удалён."
 
-        target = await get_first_target_channel()
+        target = None
+        if target_id:
+            target = await get_target_channel(target_id)
+        if not target and post.source and post.source.target_channel_id:
+            target = await get_target_channel(post.source.target_channel_id)
+        if not target:
+            target = await get_target_channel()
         if not target:
             return False, "В БД нет активного целевого канала."
 
