@@ -275,11 +275,17 @@
         const menu = document.getElementById('mobile-menu');
         btn.addEventListener('click', () => menu.classList.toggle('hidden'));
 
-        // --- ЦЕЛИ АНАЛИТИКИ ---
+        // --- ЦЕЛИ АНАЛИТИКИ (custom provider) ---
         function goal(name) {
-            if (typeof ym === 'function' && window.__metrikaId) {
-                ym(window.__metrikaId, 'reachGoal', name);
+            if (window._tgfAnalytics?.endpoint) {
+                fetch(window._tgfAnalytics.endpoint, {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({event: name, url: location.href, ref: document.referrer, ts: Date.now()}),
+                    keepalive: true
+                }).catch(() => {});
             }
+            // Plausible/Matomo/GA track automatically via their scripts
         }
         document.addEventListener('click', (e) => {
             const el = e.target.closest('[data-goal]');
