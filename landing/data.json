@@ -9,7 +9,7 @@
   "contact_telegram": "osdal",
   "contact_email": "osdal67@gmail.com",
   "contact_whatsapp": "",
-  "analytics": { "provider": "umami", "domain": "", "apiHost": "https://plausibl.duckdns.org", "url": "", "siteId": "REPLACE_WITH_WEBSITE_ID", "measurementId": "", "endpoint": "" },
+  "analytics": { "provider": "umami", "domain": "", "apiHost": "https://plausibl.duckdns.org", "url": "", "siteId": "1a128210-ce98-4590-a1f0-1581d1a81914", "measurementId": "", "endpoint": "" },
 
   "bg_color": "#0a0a0a",
   "hero_title_color": "#ffffff",
