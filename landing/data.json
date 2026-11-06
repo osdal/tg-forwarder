@@ -9,7 +9,7 @@
   "contact_telegram": "osdal",
   "contact_email": "osdal67@gmail.com",
   "contact_whatsapp": "",
-  "analytics": { "provider": "plausible", "domain": "tg-forwarder.duckdns.org", "apiHost": "https://plausibl.duckdns.org", "url": "", "siteId": "", "measurementId": "", "endpoint": "" },
+  "analytics": { "provider": "custom", "domain": "", "apiHost": "", "url": "", "siteId": "", "measurementId": "", "endpoint": "https://plausibl.duckdns.org/api/collect" },
 
   "bg_color": "#0a0a0a",
   "hero_title_color": "#ffffff",
