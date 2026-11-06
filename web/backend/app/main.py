@@ -101,6 +101,34 @@ async def test_gemini_key(data: GeminiTestRequest, _=Depends(get_current_admin))
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
 
+# --- ANALYTICS (UMAMI) ---
+class UmamiSettings(BaseModel):
+    website_id: str
+    url: str = "https://plausibl.duckdns.org"
+
+@app.get("/api/analytics/umami")
+async def get_umami_settings(_=Depends(get_current_admin)):
+    async with SessionLocal() as session:
+        s = (await session.execute(select(AppSettings).where(AppSettings.id == 1))).scalar_one_or_none()
+        if not s:
+            return {"umami_website_id": "", "umami_url": "https://plausibl.duckdns.org"}
+        return {"umami_website_id": s.umami_website_id or "", "umami_url": s.umami_url or "https://plausibl.duckdns.org"}
+
+@app.post("/api/analytics/umami")
+async def save_umami_settings(data: UmamiSettings, _=Depends(get_current_admin)):
+    if not data.website_id:
+        raise HTTPException(status_code=400, detail="Website ID обязателен")
+    async with SessionLocal() as session:
+        s = (await session.execute(select(AppSettings).where(AppSettings.id == 1))).scalar_one_or_none()
+        if not s:
+            s = AppSettings(id=1, umami_website_id=data.website_id, umami_url=data.url)
+            session.add(s)
+        else:
+            s.umami_website_id = data.website_id
+            s.umami_url = data.url
+        await session.commit()
+    return {"status": "ok"}
+
 # --- ЦЕПОЧКИ (PIPELINE) ---
 class PipelineUpdate(BaseModel):
     steps: list

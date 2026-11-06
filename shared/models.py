@@ -123,7 +123,9 @@ class AppSettings(Base):
     id = Column(Integer, primary_key=True)
     bot_last_seen = Column(DateTime, nullable=True)
     collector_last_seen = Column(DateTime, nullable=True)
-    gemini_api_key = Column(String, nullable=True) # НОВОЕ ПОЛЕ
+    gemini_api_key = Column(String, nullable=True)
+    umami_website_id = Column(String, nullable=True)
+    umami_url = Column(String, nullable=True) # НОВОЕ ПОЛЕ
 
 class MetricsDaily(Base):
     __tablename__ = "metrics_daily"

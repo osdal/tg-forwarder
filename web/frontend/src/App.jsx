@@ -67,6 +67,8 @@ function App() {
   const [templates, setTemplates] = useState([])
   const [folders, setFolders] = useState([])
   const [metrics, setMetrics] = useState(null)
+  const [umamiWebsiteId, setUmamiWebsiteId] = useState("")
+  const [umamiUrl, setUmamiUrl] = useState("https://plausibl.duckdns.org")
   const [sources, setSources] = useState([])
   const [licenses, setLicenses] = useState([])
   const [loading, setLoading] = useState(true)
@@ -531,7 +533,28 @@ function App() {
       await fetchWithAuth(`/api/template-folders/${id}`, { method: 'DELETE' }); if (activeFolder === id) setActiveFolder(null); fetchData(); 
     });
   }
-  
+
+  const saveUmamiSettings = async () => {
+    if (!umamiWebsiteId) {
+      showAlert("Введите Website ID", "Ошибка", "error");
+      return;
+    }
+    try {
+      const res = await fetchWithAuth('/api/analytics/umami', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ website_id: umamiWebsiteId, url: umamiUrl })
+      });
+      if (res.ok) {
+        showAlert("Настройки Umami сохранены", "Успех", "success");
+      } else {
+        showAlert(`Ошибка: ${(await res.json()).detail}`, "Ошибка", "error");
+      }
+    } catch (err) {
+      showAlert(err.message, "Ошибка", "error");
+    }
+  }
+
   const handleAddSource = async (e) => { 
     e.preventDefault(); if (!newSourceInput) return; setAddingSource(true); 
     try { 
@@ -578,6 +601,7 @@ function App() {
   const isOwner = license?.plan === 'owner'
   const aiEnabled = license?.limits?.ai_enabled ?? true
   const imgEnabled = license?.limits?.image_gen_enabled ?? true
+  const analyticsEnabled = license?.limits?.analytics_enabled ?? false
   const maxSources = license?.limits?.max_sources ?? 5
   const sourcesLimitReached = maxSources !== -1 && sources.length >= maxSources
   const maxTargets = license?.limits?.max_target_channels ?? -1
@@ -619,6 +643,7 @@ function App() {
           <button onClick={() => { setActiveTab('sources'); setIsMobileMenuOpen(false); }} className={`w-full text-left px-4 py-3 rounded-lg font-bold text-lg ${activeTab === 'sources' ? 'bg-blue-50 text-blue-700' : 'text-gray-700 hover:bg-gray-100'}`}>Источники</button>
           <button onClick={() => { setActiveTab('templates'); setIsMobileMenuOpen(false); }} className={`w-full text-left px-4 py-3 rounded-lg font-bold text-lg ${activeTab === 'templates' ? 'bg-blue-50 text-blue-700' : 'text-gray-700 hover:bg-gray-100'}`}>Шаблоны</button>
           <button onClick={() => { setActiveTab('metrics'); setIsMobileMenuOpen(false); }} className={`w-full text-left px-4 py-3 rounded-lg font-bold text-lg ${activeTab === 'metrics' ? 'bg-blue-50 text-blue-700' : 'text-gray-700 hover:bg-gray-100'}`}>Метрики</button>
+          {analyticsEnabled && <button onClick={() => { setActiveTab('analytics'); setIsMobileMenuOpen(false); }} className={`w-full text-left px-4 py-3 rounded-lg font-bold text-lg ${activeTab === 'analytics' ? 'bg-green-50 text-green-700' : 'text-gray-700 hover:bg-gray-100'}`}>Аналитика</button>}
           <button onClick={() => { setActiveTab('settings'); setIsMobileMenuOpen(false); }} className={`w-full text-left px-4 py-3 rounded-lg font-bold text-lg ${activeTab === 'settings' ? 'bg-blue-50 text-blue-700' : 'text-gray-700 hover:bg-gray-100'}`}>Настройки</button>
           {isOwner && viewAs === 'owner' && <button onClick={() => { setActiveTab('licenses'); setIsMobileMenuOpen(false); }} className={`w-full text-left px-4 py-3 rounded-lg font-bold text-lg ${activeTab === 'licenses' ? 'bg-purple-50 text-purple-700' : 'text-gray-700 hover:bg-gray-100'}`}>Лицензии</button>}
         </div>
@@ -654,6 +679,7 @@ function App() {
               <button onClick={() => setActiveTab('sources')} className={`text-lg xl:text-xl font-bold ${activeTab === 'sources' ? 'text-blue-600' : 'text-gray-400'}`}>Источники</button>
               <button onClick={() => setActiveTab('templates')} className={`text-lg xl:text-xl font-bold ${activeTab === 'templates' ? 'text-blue-600' : 'text-gray-400'}`}>Шаблоны</button>
               <button onClick={() => setActiveTab('metrics')} className={`text-lg xl:text-xl font-bold ${activeTab === 'metrics' ? 'text-blue-600' : 'text-gray-400'}`}>Метрики</button>
+              {analyticsEnabled && <button onClick={() => setActiveTab('analytics')} className={`text-lg xl:text-xl font-bold ${activeTab === 'analytics' ? 'text-green-600' : 'text-gray-400'}`}>Аналитика</button>}
               <button onClick={() => setActiveTab('settings')} className={`text-lg xl:text-xl font-bold ${activeTab === 'settings' ? 'text-blue-600' : 'text-gray-400'}`}>Настройки</button>
               {isOwner && viewAs === 'owner' && <button onClick={() => setActiveTab('licenses')} className={`text-lg xl:text-xl font-bold ${activeTab === 'licenses' ? 'text-purple-600' : 'text-gray-400'}`}>Лицензии</button>}
             </div>
@@ -1067,6 +1093,45 @@ function App() {
               <thead><tr className="bg-gray-100 text-gray-600 text-sm uppercase"><th className="p-4 border-b">Канал</th><th className="p-4 border-b text-center">Всего</th><th className="p-4 border-b text-center text-green-600">Опубл.</th><th className="p-4 border-b text-center text-red-600">Удалено</th><th className="p-4 border-b text-center">КПД</th></tr></thead>
               <tbody>{metrics.sources.map((src, idx) => (<tr key={idx} className="hover:bg-gray-50 border-b last:border-0"><td className="p-4 font-medium">{src.source === '@manual' ? '✍️ Ручные' : src.source}</td><td className="p-4 text-center">{src.total}</td><td className="p-4 text-center font-bold text-green-600">{src.published}</td><td className="p-4 text-center font-bold text-red-600">{src.deleted}</td><td className="p-4 text-center"><div className="flex items-center justify-center gap-2"><span className="font-bold text-lg w-12">{src.efficiency}%</span><div className="w-16 sm:w-32 bg-gray-200 rounded-full h-2.5"><div className={`h-2.5 rounded-full ${src.efficiency > 70 ? 'bg-green-500' : src.efficiency > 40 ? 'bg-yellow-400' : 'bg-red-500'}`} style={{ width: `${src.efficiency}%` }}></div></div></div></td></tr>))}</tbody>
             </table>
+          </div>
+        </div>
+      )}
+
+      {analyticsEnabled && activeTab === 'analytics' && (
+        <div>
+          <div className="mb-6">
+            <h2 className="text-2xl font-bold mb-2">Аналитика сайта (Umami)</h2>
+            <p className="text-gray-600 mb-4">Настройте сбор статистики посещаемости вашего Telegram-канала или сайта.</p>
+          </div>
+          <div className="bg-white p-6 rounded-lg shadow border border-gray-200 mb-6">
+            <h3 className="text-lg font-bold mb-4">Настройка Umami</h3>
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm font-bold text-gray-700 mb-1">Website ID (Umami)</label>
+                <input type="text" className="w-full p-3 border rounded-lg" placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx" 
+                  value={umamiWebsiteId || ''} onChange={e => setUmamiWebsiteId(e.target.value)} />
+                <p className="text-sm text-gray-500 mt-1">Получите Website ID в Umami: <a href="https://plausibl.duckdns.org" target="_blank" rel="noopener" className="text-blue-600 hover:underline">plausibl.duckdns.org</a> → Websites → скопируйте ID</p>
+              </div>
+              <div>
+                <label className="block text-sm font-bold text-gray-700 mb-1">Umami URL</label>
+                <input type="text" className="w-full p-3 border rounded-lg" 
+                  value={umamiUrl || 'https://plausibl.duckdns.org'} onChange={e => setUmamiUrl(e.target.value)} />
+                <p className="text-sm text-gray-500 mt-1">URL вашего Umami инстанса (обычно https://plausibl.duckdns.org)</p>
+              </div>
+              <button onClick={saveUmamiSettings} className="bg-green-600 hover:bg-green-700 text-white px-6 py-2 rounded-lg font-bold">
+                Сохранить настройки
+              </button>
+            </div>
+          </div>
+          <div className="bg-blue-50 p-4 rounded-lg border border-blue-200">
+            <h4 className="font-bold text-blue-800 mb-2">Как подключить аналитику:</h4>
+            <ol className="list-decimal list-inside space-y-2 text-sm text-blue-700">
+              <li>Зайдите в <a href="https://plausibl.duckdns.org" target="_blank" rel="noopener" className="underline">Umami</a> (логин: admin / admin123)</li>
+              <li>Нажмите "Add Website" → название "TG Forwarder", домен ваш_канал.duckdns.org</li>
+              <li>Скопируйте Website ID (UUID)</li>
+              <li>Вставьте ID выше и нажмите "Сохранить настройки"</li>
+              <li>Скрипт автоматически подключится к вашему каналу/сайту</li>
+            </ol>
           </div>
         </div>
       )}

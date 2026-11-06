@@ -48,4 +48,5 @@ def format_limits(plan: str) -> str:
     targets = "без ограничений" if limits.get("max_target_channels", -1) == -1 else limits["max_target_channels"]
     ai = "да" if limits["ai_enabled"] else "нет"
     images = "да" if limits["image_gen_enabled"] else "нет"
-    return f"источники: {sources}, целевые каналы: {targets}, ИИ-редактор: {ai}, картинки: {images}"
+    analytics = "да" if limits.get("analytics_enabled") else "нет"
+    return f"источники: {sources}, целевые каналы: {targets}, ИИ-редактор: {ai}, картинки: {images}, аналитика: {analytics}"
