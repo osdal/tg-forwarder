@@ -292,7 +292,7 @@
             if (el) goal(el.dataset.goal);
         });
 
-        // --- АНАЛИТИКА (Plausible / Matomo / GA / custom) ---
+        // --- АНАЛИТИКА (Plausible / Matomo / GA / Umami / custom) ---
         function initAnalytics(cfg) {
             if (!cfg || !cfg.provider) return;
             if (cfg.provider === 'plausible') {
@@ -302,6 +302,15 @@
                 script.dataset.domain = cfg.domain || window.location.hostname;
                 script.src = (cfg.apiHost || 'https://plausible.io') + '/js/script.js';
                 document.head.appendChild(script);
+            } else if (cfg.provider === 'umami') {
+                // Umami: https://umami.is/ | self-hosted: https://github.com/umami-software/umami
+                if (cfg.siteId && cfg.apiHost) {
+                    const script = document.createElement('script');
+                    script.defer = true;
+                    script.src = cfg.apiHost.replace(/\/$/, '') + '/script.js';
+                    script.dataset.websiteId = cfg.siteId;
+                    document.head.appendChild(script);
+                }
             } else if (cfg.provider === 'matomo') {
                 // Matomo: https://matomo.org/ | self-hosted
                 if (cfg.url && cfg.siteId) {
