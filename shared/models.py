@@ -147,3 +147,34 @@ class ClientLicense(Base):
     expires_at = Column(DateTime)
     created_at = Column(DateTime, default=datetime.utcnow)
     is_active = Column(Boolean, default=True)
+
+
+class PartnerLanding(Base):
+    __tablename__ = "partner_landings"
+    id = Column(Integer, primary_key=True)
+    name = Column(String, index=True)
+    url = Column(String)
+    postback_url = Column(String, nullable=True)
+    secret = Column(String, nullable=True)
+    is_active = Column(Boolean, default=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    clicks = relationship("PartnerClick", back_populates="landing")
+
+
+class PartnerClick(Base):
+    __tablename__ = "partner_clicks"
+    id = Column(Integer, primary_key=True)
+    landing_id = Column(Integer, ForeignKey("partner_landings.id"), nullable=False)
+    ip_hash = Column(String, nullable=True)
+    user_agent = Column(String, nullable=True)
+    referrer = Column(String, nullable=True)
+    utm_source = Column(String, nullable=True)
+    utm_medium = Column(String, nullable=True)
+    utm_campaign = Column(String, nullable=True)
+    utm_content = Column(String, nullable=True)
+    utm_term = Column(String, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    landing = relationship("PartnerLanding", back_populates="clicks")

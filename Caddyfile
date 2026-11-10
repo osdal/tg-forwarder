@@ -1,11 +1,13 @@
 # Твой основной проект
 tg-forwarder.duckdns.org {
+    reverse_proxy /api/* localhost:8000
+    reverse_proxy /r/* localhost:8000
     reverse_proxy localhost:8080
 }
 
 # Umami Analytics (на домене plausibl.duckdns.org)
 plausibl.duckdns.org {
-    reverse_proxy umami:3000
+    reverse_proxy localhost:3003
 }
 
 # Новый блог на WordPress

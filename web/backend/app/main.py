@@ -9,10 +9,10 @@ import jwt
 import json
 from datetime import datetime, timedelta, timezone
 
-from fastapi import FastAPI, HTTPException, File, UploadFile, Depends, Header
+from fastapi import FastAPI, HTTPException, File, UploadFile, Depends, Header, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, RedirectResponse
 from pydantic import BaseModel
 from sqlalchemy import select, func, case, update
 from sqlalchemy.orm import selectinload
@@ -20,10 +20,12 @@ from telethon import TelegramClient
 from telethon.sessions import StringSession
 from telethon.tl.types import Channel
 
+import aiohttp
+
 from shared.config import get_settings, license_info, LicenseInfo, DEFAULT_PLANS
 from shared.licensing import sign_license
 from shared.db import SessionLocal
-from shared.models import Post, PostStatus, PostMedia, Template, PostTemplate, TemplateFolder, Source, SourceTemplate, MediaLibrary, AppSettings, ClientLicense, TargetChannel
+from shared.models import Post, PostStatus, PostMedia, Template, PostTemplate, TemplateFolder, Source, SourceTemplate, MediaLibrary, AppSettings, ClientLicense, TargetChannel, PartnerLanding, PartnerClick
 from shared.publisher import publish_post_to_channel
 from shared.minio_client import get_minio
 from shared.ai_helper import translate_text, rewrite_text, generate_text, generate_image, list_image_models
@@ -476,6 +478,146 @@ async def delete_target(target_id: int, _=Depends(get_current_admin)):
         await session.execute(update(Source).where(Source.target_channel_id == target_id).values(target_channel_id=None))
         await session.execute(update(Post).where(Post.target_channel_id == target_id).values(target_channel_id=None))
         await session.delete(target); await session.commit(); return {"status": "ok"}
+
+# --- ПАРТНЁРСКИЕ ЛЕНДИНГИ (РЕФЕРАЛЬНЫЕ ССЫЛКИ) ---
+class PartnerLandingCreate(BaseModel):
+    name: str
+    url: str
+    postback_url: str | None = None
+    secret: str | None = None
+
+class PartnerLandingUpdate(BaseModel):
+    name: str | None = None
+    url: str | None = None
+    postback_url: str | None = None
+    secret: str | None = None
+    is_active: bool | None = None
+
+@app.get("/api/partners")
+async def list_partners(_=Depends(get_current_admin)):
+    async with SessionLocal() as session:
+        rows = (await session.execute(select(PartnerLanding).order_by(PartnerLanding.id))).scalars().all()
+        return [{
+            "id": p.id,
+            "name": p.name,
+            "url": p.url,
+            "postback_url": p.postback_url,
+            "secret": p.secret,
+            "is_active": p.is_active,
+            "tracking_url": f"https://tg-forwarder.duckdns.org/r/{p.id}",
+            "created_at": p.created_at.isoformat() if p.created_at else None,
+            "clicks_count": await session.scalar(select(func.count(PartnerClick.id)).where(PartnerClick.landing_id == p.id)),
+        } for p in rows]
+
+@app.post("/api/partners")
+async def create_partner(data: PartnerLandingCreate, _=Depends(get_current_admin)):
+    async with SessionLocal() as session:
+        p = PartnerLanding(name=data.name, url=data.url, postback_url=data.postback_url, secret=data.secret)
+        session.add(p); await session.commit()
+        return {"status": "ok", "id": p.id, "tracking_url": f"https://tg-forwarder.duckdns.org/r/{p.id}"}
+
+@app.get("/api/partners/{partner_id}")
+async def get_partner(partner_id: int, _=Depends(get_current_admin)):
+    async with SessionLocal() as session:
+        p = (await session.execute(select(PartnerLanding).where(PartnerLanding.id == partner_id))).scalar_one_or_none()
+        if not p: raise HTTPException(status_code=404, detail="Не найден")
+        clicks = await session.scalar(select(func.count(PartnerClick.id)).where(PartnerClick.landing_id == partner_id))
+        return {
+            "id": p.id,
+            "name": p.name,
+            "url": p.url,
+            "postback_url": p.postback_url,
+            "secret": p.secret,
+            "is_active": p.is_active,
+            "tracking_url": f"https://tg-forwarder.duckdns.org/r/{p.id}",
+            "created_at": p.created_at.isoformat() if p.created_at else None,
+            "clicks_count": clicks,
+        }
+
+@app.patch("/api/partners/{partner_id}")
+async def update_partner(partner_id: int, data: PartnerLandingUpdate, _=Depends(get_current_admin)):
+    async with SessionLocal() as session:
+        p = (await session.execute(select(PartnerLanding).where(PartnerLanding.id == partner_id))).scalar_one_or_none()
+        if not p: raise HTTPException(status_code=404, detail="Не найден")
+        if data.name is not None: p.name = data.name
+        if data.url is not None: p.url = data.url
+        if data.postback_url is not None: p.postback_url = data.postback_url
+        if data.secret is not None: p.secret = data.secret
+        if data.is_active is not None: p.is_active = data.is_active
+        p.updated_at = datetime.utcnow()
+        await session.commit()
+        return {"status": "ok"}
+
+@app.delete("/api/partners/{partner_id}")
+async def delete_partner(partner_id: int, _=Depends(get_current_admin)):
+    async with SessionLocal() as session:
+        p = (await session.execute(select(PartnerLanding).where(PartnerLanding.id == partner_id))).scalar_one_or_none()
+        if not p: raise HTTPException(status_code=404)
+        await session.delete(p); await session.commit()
+        return {"status": "ok"}
+
+# --- РЕДИРЕКТ ДЛЯ ТРЕКИНГА КЛИКОВ ---
+@app.get("/r/{partner_id}")
+async def track_click(partner_id: int, request: Request):
+    async with SessionLocal() as session:
+        p = (await session.execute(select(PartnerLanding).where(PartnerLanding.id == partner_id))).scalar_one_or_none()
+        if not p or not p.is_active:
+            raise HTTPException(status_code=404, detail="Лендинг не найден или неактивен")
+        
+        # Хеш IP для приватности
+        client_ip = request.client.host if request.client else "unknown"
+        ip_hash = hashlib.sha256(client_ip.encode()).hexdigest()[:16]
+        
+        # UTM параметры
+        utm_params = dict(request.query_params)
+        utm_source = utm_params.get("utm_source")
+        utm_medium = utm_params.get("utm_medium")
+        utm_campaign = utm_params.get("utm_campaign")
+        utm_content = utm_params.get("utm_content")
+        utm_term = utm_params.get("utm_term")
+        
+        click = PartnerClick(
+            landing_id=partner_id,
+            ip_hash=ip_hash,
+            user_agent=request.headers.get("user-agent"),
+            referrer=request.headers.get("referer"),
+            utm_source=utm_source,
+            utm_medium=utm_medium,
+            utm_campaign=utm_campaign,
+            utm_content=utm_params.get("utm_content"),
+            utm_term=utm_term,
+        )
+        session.add(click)
+        await session.commit()
+        
+        # Постбэк к партнёру (если настроен)
+        if p.postback_url:
+            import asyncio
+            asyncio.create_task(send_postback(p, click))
+        
+        return RedirectResponse(url=p.url, status_code=302)
+
+async def send_postback(p: PartnerLanding, click: PartnerClick):
+    try:
+        async with aiohttp.ClientSession() as session:
+            payload = {
+                "click_id": click.id,
+                "landing_id": p.id,
+                "landing_name": p.name,
+                "timestamp": click.created_at.isoformat(),
+                "utm_source": click.utm_source,
+                "utm_medium": click.utm_medium,
+                "utm_campaign": click.utm_campaign,
+                "utm_content": click.utm_content,
+                "utm_term": click.utm_term,
+            }
+            headers = {"Content-Type": "application/json"}
+            if p.secret:
+                headers["X-Secret"] = p.secret
+            async with session.post(p.postback_url, json=payload, headers=headers, timeout=10) as resp:
+                pass
+    except Exception:
+        pass
 
 class AttachSourceTemplate(BaseModel): template_id: int
 

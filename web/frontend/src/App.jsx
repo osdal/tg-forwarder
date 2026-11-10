@@ -69,6 +69,7 @@ function App() {
   const [metrics, setMetrics] = useState(null)
   const [umamiWebsiteId, setUmamiWebsiteId] = useState("")
   const [umamiUrl, setUmamiUrl] = useState("https://plausibl.duckdns.org")
+  const [partners, setPartners] = useState([])
   const [sources, setSources] = useState([])
   const [licenses, setLicenses] = useState([])
   const [loading, setLoading] = useState(true)
@@ -135,6 +136,17 @@ function App() {
   const [newTargetInput, setNewTargetInput] = useState("")
   const [addingTarget, setAddingTarget] = useState(false)
 
+  const [newPartnerName, setNewPartnerName] = useState("")
+  const [newPartnerUrl, setNewPartnerUrl] = useState("")
+  const [newPartnerPostbackUrl, setNewPartnerPostbackUrl] = useState("")
+  const [newPartnerSecret, setNewPartnerSecret] = useState("")
+
+  const [editingPartner, setEditingPartner] = useState(null)
+  const [editPartnerName, setEditPartnerName] = useState("")
+  const [editPartnerUrl, setEditPartnerUrl] = useState("")
+  const [editPartnerPostbackUrl, setEditPartnerPostbackUrl] = useState("")
+  const [editPartnerSecret, setEditPartnerSecret] = useState("")
+
   const [newLicClient, setNewLicClient] = useState("")
   const [newLicPlan, setNewLicPlan] = useState("pro")
   const [newLicDays, setNewLicDays] = useState(365)
@@ -184,7 +196,7 @@ function App() {
   const fetchData = async () => {
     if (!token) return
     try {
-      const [postsRes, trashRes, libRes, tplRes, foldRes, metRes, srcRes, licInfoRes, setRes, tgtRes] = await Promise.all([
+      const [postsRes, trashRes, libRes, tplRes, foldRes, metRes, srcRes, licInfoRes, setRes, tgtRes, partnersRes] = await Promise.all([
         fetchWithAuth('/api/posts?trash=false'),
         fetchWithAuth('/api/posts?trash=true'),
         fetchWithAuth('/api/media-library'),
@@ -194,12 +206,14 @@ function App() {
         fetchWithAuth('/api/sources'),
         fetchWithAuth('/api/license/info'),
         fetchWithAuth('/api/settings'),
-        fetchWithAuth('/api/targets')
+        fetchWithAuth('/api/targets'),
+        fetchWithAuth('/api/partners')
       ])
       setPosts(await postsRes.json()); setTrashPosts(await trashRes.json());
       setMediaLib(await libRes.json()); setTemplates(await tplRes.json()); 
       setFolders(await foldRes.json()); setMetrics(await metRes.json()); setSources(await srcRes.json());
       setTargets(await tgtRes.json());
+      setPartners(await partnersRes.json());
       
       const licData = await licInfoRes.json();
       setLicense(licData);
@@ -587,6 +601,120 @@ function App() {
     });
   }
 
+  const fetchPartners = async () => {
+    try {
+      const res = await fetchWithAuth('/api/partners');
+      if (res.ok) {
+        const data = await res.json();
+        setPartners(data);
+      } else {
+        showAlert(`Ошибка: ${(await res.json()).detail}`, "Ошибка", "error");
+      }
+    } catch (err) {
+      showAlert(err.message, "Ошибка", "error");
+    }
+  }
+
+  const createPartner = async () => {
+    if (!newPartnerName || !newPartnerUrl) {
+      showAlert("Заполните название и URL", "Ошибка", "error");
+      return;
+    }
+    try {
+      const res = await fetchWithAuth('/api/partners', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: newPartnerName,
+          url: newPartnerUrl,
+          postback_url: newPartnerPostbackUrl,
+          secret: newPartnerSecret
+        })
+      });
+      if (res.ok) {
+        setNewPartnerName("");
+        setNewPartnerUrl("");
+        setNewPartnerPostbackUrl("");
+        setNewPartnerSecret("");
+        await fetchPartners();
+        showAlert("Лендинг создан", "Успех", "success");
+      } else {
+        showAlert(`Ошибка: ${(await res.json()).detail}`, "Ошибка", "error");
+      }
+    } catch (err) {
+      showAlert(err.message, "Ошибка", "error");
+    }
+  }
+
+  const handleEditPartner = (partner) => {
+    setEditingPartner(partner);
+    setEditPartnerName(partner.name);
+    setEditPartnerUrl(partner.url);
+    setEditPartnerPostbackUrl(partner.postback_url || "");
+    setEditPartnerSecret(partner.secret || "");
+  }
+
+  const savePartner = async () => {
+    if (!editPartnerName || !editPartnerUrl) {
+      showAlert("Заполните название и URL", "Ошибка", "error");
+      return;
+    }
+    try {
+      const res = await fetchWithAuth(`/api/partners/${editingPartner.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: editPartnerName,
+          url: editPartnerUrl,
+          postback_url: editPartnerPostbackUrl,
+          secret: editPartnerSecret
+        })
+      });
+      if (res.ok) {
+        setEditingPartner(null);
+        await fetchPartners();
+        showAlert("Лендинг обновлен", "Успех", "success");
+      } else {
+        showAlert(`Ошибка: ${(await res.json()).detail}`, "Ошибка", "error");
+      }
+    } catch (err) {
+      showAlert(err.message, "Ошибка", "error");
+    }
+  }
+
+  const handleTogglePartner = async (partner) => {
+    try {
+      const res = await fetchWithAuth(`/api/partners/${partner.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ is_active: !partner.is_active })
+      });
+      if (res.ok) {
+        await fetchPartners();
+      } else {
+        showAlert(`Ошибка: ${(await res.json()).detail}`, "Ошибка", "error");
+      }
+    } catch (err) {
+      showAlert(err.message, "Ошибка", "error");
+    }
+  }
+
+  const handleDeletePartner = async (id) => {
+    showConfirm("Удалить лендинг? Все клики по нему будут удалены.", async () => {
+      try {
+        const res = await fetchWithAuth(`/api/partners/${id}`, { method: 'DELETE' });
+        if (res.ok) {
+          await fetchPartners();
+          showAlert("Лендинг удален", "Успех", "success");
+        } else {
+          showAlert(`Ошибка: ${(await res.json()).detail}`, "Ошибка", "error");
+        }
+      } catch (err) {
+        showAlert(err.message, "Ошибка", "error");
+      }
+    });
+  }
+
   const handleSetSourceTarget = async (src, targetId) => {
     await fetchWithAuth(`/api/sources/${src.id}/target`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ target_channel_id: targetId ? Number(targetId) : null }) });
     fetchData();
@@ -641,6 +769,7 @@ function App() {
           <button onClick={() => { setActiveTab('trash'); setIsMobileMenuOpen(false); }} className={`w-full text-left px-4 py-3 rounded-lg font-bold text-lg ${activeTab === 'trash' ? 'bg-red-50 text-red-700' : 'text-gray-700 hover:bg-gray-100'}`}>Корзина</button>
           <button onClick={() => { setActiveTab('media'); setIsMobileMenuOpen(false); }} className={`w-full text-left px-4 py-3 rounded-lg font-bold text-lg ${activeTab === 'media' ? 'bg-blue-50 text-blue-700' : 'text-gray-700 hover:bg-gray-100'}`}>Медиа</button>
           <button onClick={() => { setActiveTab('sources'); setIsMobileMenuOpen(false); }} className={`w-full text-left px-4 py-3 rounded-lg font-bold text-lg ${activeTab === 'sources' ? 'bg-blue-50 text-blue-700' : 'text-gray-700 hover:bg-gray-100'}`}>Источники</button>
+          {analyticsEnabled && <button onClick={() => { setActiveTab('partners'); setIsMobileMenuOpen(false); }} className={`w-full text-left px-4 py-3 rounded-lg font-bold text-lg ${activeTab === 'partners' ? 'bg-purple-50 text-purple-700' : 'text-gray-700 hover:bg-gray-100'}`}>Партнёрские ссылки</button>}
           <button onClick={() => { setActiveTab('templates'); setIsMobileMenuOpen(false); }} className={`w-full text-left px-4 py-3 rounded-lg font-bold text-lg ${activeTab === 'templates' ? 'bg-blue-50 text-blue-700' : 'text-gray-700 hover:bg-gray-100'}`}>Шаблоны</button>
           <button onClick={() => { setActiveTab('metrics'); setIsMobileMenuOpen(false); }} className={`w-full text-left px-4 py-3 rounded-lg font-bold text-lg ${activeTab === 'metrics' ? 'bg-blue-50 text-blue-700' : 'text-gray-700 hover:bg-gray-100'}`}>Метрики</button>
           {analyticsEnabled && <button onClick={() => { setActiveTab('analytics'); setIsMobileMenuOpen(false); }} className={`w-full text-left px-4 py-3 rounded-lg font-bold text-lg ${activeTab === 'analytics' ? 'bg-green-50 text-green-700' : 'text-gray-700 hover:bg-gray-100'}`}>Аналитика</button>}
@@ -677,6 +806,7 @@ function App() {
               <button onClick={() => setActiveTab('trash')} className={`text-lg xl:text-xl font-bold ${activeTab === 'trash' ? 'text-red-600' : 'text-gray-400'}`}>Корзина</button>
               <button onClick={() => setActiveTab('media')} className={`text-lg xl:text-xl font-bold ${activeTab === 'media' ? 'text-blue-600' : 'text-gray-400'}`}>Медиа</button>
               <button onClick={() => setActiveTab('sources')} className={`text-lg xl:text-xl font-bold ${activeTab === 'sources' ? 'text-blue-600' : 'text-gray-400'}`}>Источники</button>
+              {analyticsEnabled && <button onClick={() => setActiveTab('partners')} className={`text-lg xl:text-xl font-bold ${activeTab === 'partners' ? 'text-purple-600' : 'text-gray-400'}`}>Партнёрские ссылки</button>}
               <button onClick={() => setActiveTab('templates')} className={`text-lg xl:text-xl font-bold ${activeTab === 'templates' ? 'text-blue-600' : 'text-gray-400'}`}>Шаблоны</button>
               <button onClick={() => setActiveTab('metrics')} className={`text-lg xl:text-xl font-bold ${activeTab === 'metrics' ? 'text-blue-600' : 'text-gray-400'}`}>Метрики</button>
               {analyticsEnabled && <button onClick={() => setActiveTab('analytics')} className={`text-lg xl:text-xl font-bold ${activeTab === 'analytics' ? 'text-green-600' : 'text-gray-400'}`}>Аналитика</button>}
@@ -1132,6 +1262,71 @@ function App() {
               <li>Вставьте ID выше и нажмите "Сохранить настройки"</li>
               <li>Скрипт автоматически подключится к вашему каналу/сайту</li>
             </ol>
+          </div>
+        </div>
+      )}
+
+      {analyticsEnabled && activeTab === 'partners' && (
+        <div>
+          <div className="mb-6">
+            <h2 className="text-2xl font-bold mb-2">Партнёрские ссылки</h2>
+            <p className="text-gray-600 mb-4">Создавайте трекинговые ссылки для партнёрских лендингов и следите за кликами.</p>
+          </div>
+          <div className="bg-white p-6 rounded-lg shadow border border-gray-200 mb-6">
+            <h3 className="text-lg font-bold mb-4">Создать новый партнёрский лендинг</h3>
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm font-bold text-gray-700 mb-1">Название</label>
+                <input type="text" className="w-full p-3 border rounded-lg" placeholder="Например: Partner Landing 1" 
+                  value={newPartnerName || ''} onChange={e => setNewPartnerName(e.target.value)} />
+              </div>
+              <div>
+                <label className="block text-sm font-bold text-gray-700 mb-1">URL лендинга</label>
+                <input type="text" className="w-full p-3 border rounded-lg" placeholder="https://partner.example.com/landing" 
+                  value={newPartnerUrl || ''} onChange={e => setNewPartnerUrl(e.target.value)} />
+              </div>
+              <div>
+                <label className="block text-sm font-bold text-gray-700 mb-1">Postback URL (опционально)</label>
+                <input type="text" className="w-full p-3 border rounded-lg" placeholder="https://partner.com/postback" 
+                  value={newPartnerPostbackUrl || ''} onChange={e => setNewPartnerPostbackUrl(e.target.value)} />
+              </div>
+              <div>
+                <label className="block text-sm font-bold text-gray-700 mb-1">Секрет для постбэка (опционально)</label>
+                <input type="text" className="w-full p-3 border rounded-lg" placeholder="secret_key" 
+                  value={newPartnerSecret || ''} onChange={e => setNewPartnerSecret(e.target.value)} />
+              </div>
+              <button onClick={createPartner} className="bg-purple-600 hover:bg-purple-700 text-white px-6 py-2 rounded-lg font-bold">
+                Создать лендинг
+              </button>
+            </div>
+          </div>
+          <div className="bg-white p-6 rounded-lg shadow border border-gray-200 mb-6">
+            <h3 className="text-lg font-bold mb-4">Список партнёрских лендингов</h3>
+            {partners.length === 0 ? (
+              <p className="text-gray-500 text-center py-8">Лендингов пока нет. Создайте первый выше.</p>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full text-left border-collapse min-w-[800px]">
+                  <thead><tr className="bg-gray-100 text-gray-600 text-sm uppercase"><th className="p-4">Название</th><th className="p-4">URL</th><th className="p-4 text-center">Статус</th><th className="p-4 text-center">Клики</th><th className="p-4">Трекинг URL</th><th className="p-4 text-right">Действия</th></tr></thead>
+                  <tbody>
+                    {partners.map(p => (
+                      <tr key={p.id} className="border-b last:border-0 hover:bg-gray-50">
+                        <td className="p-4 font-medium">{p.name}</td>
+                        <td className="p-4 text-blue-600 hover:underline">{p.url}</td>
+                        <td className="p-4 text-center"><span className={`px-3 py-1 rounded-full text-xs font-bold ${p.is_active ? 'bg-green-100 text-green-800' : 'bg-gray-200 text-gray-600'}`}>{p.is_active ? 'Активен' : 'Отключен'}</span></td>
+                        <td className="p-4 text-center font-bold">{p.clicks_count}</td>
+                        <td className="p-4"><code className="text-xs bg-gray-100 px-2 py-1 rounded break-all">{p.tracking_url}</code></td>
+                        <td className="p-4 text-right flex justify-end gap-2">
+                          <button onClick={() => handleEditPartner(p)} className="text-blue-600 hover:underline text-sm">Редактировать</button>
+                          <button onClick={() => handleTogglePartner(p)} className={`text-sm ${p.is_active ? 'text-gray-600' : 'text-green-600'} hover:underline`}>{p.is_active ? 'Отключить' : 'Включить'}</button>
+                          <button onClick={() => handleDeletePartner(p.id)} className="text-red-600 hover:underline text-sm">Удалить</button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
           </div>
         </div>
       )}
